@@ -472,6 +472,7 @@ def transcribe_segments(
                     "speaker": seg_info["speaker"],
                     "start_sec": seg_info["start_sec"],
                     "end_sec": seg_info["end_sec"],
+                    "seg_filename": seg_info["seg_filename"],
                     "duration_sec": seg_info["end_sec"] - seg_info["start_sec"],
                     "transcription": "",
                 }
@@ -482,6 +483,7 @@ def transcribe_segments(
                     "speaker": seg_info["speaker"],
                     "start_sec": seg_info["start_sec"],
                     "end_sec": seg_info["end_sec"],
+                    "seg_filename": seg_info["seg_filename"],
                     "duration_sec": seg_info["end_sec"] - seg_info["start_sec"],
                     "transcription": transcriptions[seg_info["seg_filename"]],
                 }

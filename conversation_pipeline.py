@@ -56,11 +56,13 @@ def example_dyad() -> dict:
     """
     return {
         "speakers_audio": {
-            "P1": "path/to/speaker1.wav",
-            "P2": "path/to/speaker2.wav",
+            "P1": "demo/audio/F1F2_quiet_food_1m_01_ch1.wav",
+            "P2": "demo/audio/F1F2_quiet_food_1m_01_ch2.wav",
         },
         "output_dir": "outputs/dyad",
         "vad_type": "rvad",
+        "persist_transcription_artifacts": True,
+        "cleanup_speaker_folders": False,
     }
 
 

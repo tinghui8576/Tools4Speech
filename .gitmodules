@@ -1,0 +1,3 @@
+[submodule "src/voxprofile"]
+	path = src/voxprofile
+	url = https://github.com/tiantiaf0627/vox-profile-release.git

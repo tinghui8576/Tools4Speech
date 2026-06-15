@@ -33,6 +33,7 @@ from .merge_turns import create_turns_df_windowed
 from .postprocess_vad import filter_low_energy_segments
 from .transcription import load_whisper_model, transcribe_segments
 from .vad import SpeechActivityDetector
+from .vox_demographic import load_age_sex_model, predict_demographics_segments
 
 EnergyMargin = Union[float, List[float], Tuple[float, ...]]
 
@@ -649,7 +650,7 @@ def process_conversation(
             model_batch_size=whisper_model_batch_size,
         )
         print("✓ Model loaded")
-
+        print(persist_transcription_artifacts)
         all_results: List[Dict[str, object]] = []
         # In dual mode, use the strong-preprocessed audio for ASR; otherwise fall back to speakers_audio.
         _asr_audio = (
@@ -659,6 +660,7 @@ def process_conversation(
             for speaker, audio_path in _asr_audio.items():
                 print(f"Transcribing {speaker} segments...")
                 speaker_segments = segments_by_speaker[speaker]
+                print(speaker_segments)
                 results = transcribe_segments(
                     model=model,
                     segments=speaker_segments.reset_index(drop=True),
@@ -692,6 +694,42 @@ def process_conversation(
     df_merged_context.to_csv(final_labels_path, sep="\t", index=False)
 
     print(f"✓ Final processing completed: {len(df_merged_context)} total segments")
+
+    trans_df = pd.read_csv(final_labels_path, sep="\t")
+    segments_by_speaker: Dict[str, pd.DataFrame] = {}
+    for speaker in speakers:
+        segments_by_speaker[speaker] = trans_df[trans_df["speaker"] == speaker]
+
+    final_results = []
+    raw_emo_path = os.path.join(output_dir, "raw_emo.txt")
+    agesex_model_batch_size = 10
+    agesex_model_name = "tiantiaf/wavlm-large-age-sex"
+    device = "auto"
+    emo_model = load_age_sex_model(
+        agesex_model_name=agesex_model_name,
+        device=device,
+        model_batch_size=agesex_model_batch_size,
+    )
+
+    for speaker, segments in  segments_by_speaker.items():
+        predictions_map = predict_demographics_segments(emo_model, segments, output_dir="outputs/demographics", cache=False)
+        
+        for idx, row in segments.iterrows():
+            # Look up the prediction using the true pandas DataFrame row index (idx)
+            pred = predictions_map.get(idx)
+            
+            final_results.append({
+                "speaker": row["speaker"],
+                "start_sec": row["start_sec"],
+                "end_sec": row["end_sec"],
+                "estimated_age": pred["age"],
+                "estimated_sex": pred["sex"],
+                "file_source": row.get("seg_filename", f"segment_{idx}.wav")
+            })
+    df_all = pd.DataFrame(final_results)
+    df_all = _attach_segment_types(df_all, turns_df)
+    df_all.to_csv(raw_emo_path, sep="\t", index=False)
+
 
     # Export to ELAN format if requested
     elan_export_path = None

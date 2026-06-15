@@ -59,3 +59,5 @@ from .evaluation_plots import (
     plot_evaluation_results,
 )
 from .transcription import load_whisper_model, transcribe_segments
+from .vox_demographic import load_age_sex_model, predict_demographics_segments
+from .manual_batch import _batch_files
