@@ -60,4 +60,4 @@ from .evaluation_plots import (
 )
 from .transcription import load_whisper_model, transcribe_segments
 from .vox_demographic import load_age_sex_model, predict_demographics_segments
-from .manual_batch import _batch_files
+from .char_inference import _batch_files, _char_predict_batch_inference

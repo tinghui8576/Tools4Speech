@@ -2,23 +2,18 @@ import os
 import gc
 import torch
 import pandas as pd
-import torch.nn.functional as F
 from typing import Any, Dict, List, Optional
 from .char_inference import _batch_files, _char_predict_batch_inference, TransformersCharModel
-from .voxprofile.src.model.age_sex.wavlm_demographics import WavLMWrapper
-from .voxprofile.src.model.age_sex.whisper_demographics import WhisperWrapper
-
-
-SEX_UNIQUE_LABELS = ["Female", "Male"]
-
-def load_age_sex_model(
-    agesex_model_name: str = "tiantiaf/wavlm-large-age-sex",
+from .voxprofile.src.model.emotion.wavlm_emotion_dim import WavLMWrapper
+from .voxprofile.src.model.emotion.whisper_emotion_dim import WhisperWrapper
+def load_emo_dim_model(
+    emo_dim_model_name: str = "tiantiaf/wavlm-large-msp-podcast-emotion-dim",
     device: str = "auto",
     cache_dir: Optional[str] = None,
     model_batch_size: int = 16,
     backend: str = "auto",
     compute_type: Optional[str] = None,
-) ->TransformersCharModel:
+) -> TransformersCharModel:
     """Initialise and return a demographic prediction model via Voxprofile."""
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -28,30 +23,34 @@ def load_age_sex_model(
     if compute_type is None:
         compute_type = "float16" if device == "cuda" else "float32"
 
-    if "wavlm" in agesex_model_name:
+    if "wavlm" in emo_dim_model_name:
         backend = "wavlm-large"
-        model = WavLMWrapper.from_pretrained(agesex_model_name).to(device)
+        model = WavLMWrapper.from_pretrained(emo_dim_model_name).to(device)
         model.eval() 
-    elif "whisper" in agesex_model_name:
+        
+        
+    elif "whisper" in emo_dim_model_name:
         backend = 'whisper'
-        raise ValueError(f"Unsupported model: {agesex_model_name}")
+        model = WhisperWrapper.from_pretrained(emo_dim_model_name).to(device)
+        model.eval() 
     else:
-        raise ValueError(f"Unsupported backend: {agesex_model_name}")
+        raise ValueError(f"Unsupported model or backend: {emo_dim_model_name}")
     
     if compute_type == "float16" and device == "cuda":
         model = model.half()
-
     return TransformersCharModel(
         backend=backend,
         model=model,
-        Char_model_name=agesex_model_name,
+        Char_model_name=emo_dim_model_name,
         device=device,
         cache_dir=cache_dir,
         model_batch_size=model_batch_size,
         compute_type=compute_type,
     )
     
-def predict_demographics_segments(
+    
+    
+def predict_emotion_dim_segments(
     model: Any,
     segments: pd.DataFrame,
     output_dir: str,
@@ -78,11 +77,12 @@ def predict_demographics_segments(
                 try:
                     with open(demo_cache, "r", encoding="utf-8") as cache_file:
                         cached_text = cache_file.read().strip()
-                    if not cached_text.startswith("[AGE_SEX_PREDICTION_FAILED:"):
+                    if not cached_text.startswith("[EMO_DIM_PREDICTION_FAILED:"):
                         parts = cached_text.split(" | ")
-                        age = float(parts[0].split(": ")[1])
-                        sex = parts[1].split(": ")[1]
-                        batch_results[i] = {"age": age, "sex": sex}
+                        arousal = float(parts[0].split(": ")[1])
+                        valence = float(parts[1].split(": ")[1])
+                        dominance = float(parts[2].split(": ")[1])
+                        batch_results[i] = {"arousal": arousal, "valence": valence, "dominance": dominance}
                         continue
                 except Exception:
                     pass  
@@ -92,27 +92,29 @@ def predict_demographics_segments(
 
         # Model Inference execution block 
         if files_to_predict:
-            outputs = _char_predict_batch_inference(files_to_predict, model)
-
-            # Safely detach and process the outputs
-            age_preds = (outputs[0].detach().cpu().numpy() * 100).flatten()
-            sex_probs = F.softmax(outputs[1], dim=1)
-            sex_indices = torch.argmax(sex_probs, dim=1).detach().cpu().tolist()
+            a_head, v_head, d_head = _char_predict_batch_inference(files_to_predict, model)
+            v_preds = v_head.detach().cpu().flatten().tolist()
+            a_preds = a_head.detach().cpu().flatten().tolist()
+            d_preds = d_head.detach().cpu().flatten().tolist()
+            
             # Map generated data targets back into batch metrics
-            for batch_idx, sex_idx  in zip(file_indices, sex_indices):
-                current_age = float(age_preds[batch_idx])
-                current_sex = SEX_UNIQUE_LABELS[sex_idx]
+            for batch_idx  in file_indices:
+                # print(batch_idx, output)
+                current_v = float(v_preds[batch_idx])
+                current_a = float(a_preds[batch_idx])
+                current_d = float(d_preds[batch_idx])
 
                 batch_results[batch_idx] = {
-                    "age": current_age,
-                    "sex": current_sex
+                    "arousal": current_a,
+                    "valence": current_v, 
+                    "dominance": current_d
                 }
 
                 if cache:
                     # Construct cache file path smoothly
                     cache_path = batch[batch_idx].get("demo_cache", batch[batch_idx]['seg_filename'].replace(".wav", "_demographics.txt"))
                     with open(cache_path, "w", encoding="utf-8") as cache_file:
-                        cache_file.write(f"Age: {current_age:.1f} | Sex: {current_sex}")
+                        cache_file.write(f"arousal: {current_a}, valence: {current_v}, dominance: {current_d}")
 
         # Save results back using their true global identifiers
         for seg, res in zip(batch, batch_results):
