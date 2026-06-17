@@ -2,6 +2,7 @@ import os
 import gc
 import torch
 import pandas as pd
+from tqdm.auto import tqdm
 from typing import Any, Dict, List, Optional
 from .char_inference import _batch_files, _char_predict_batch_inference, TransformersCharModel
 from .voxprofile.src.model.emotion.wavlm_emotion_dim import WavLMWrapper
@@ -63,13 +64,13 @@ def predict_emotion_dim_segments(
     batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
-    for batch in batches:
+    for batch in tqdm(batches, desc=f"Processing {len(batches)} emotions dim"):
         files_to_predict = []
         file_indices = []
         batch_results = [None] * len(batch)
 
         for i, seg in enumerate(batch):
-            demo_cache = seg['seg_filename'].replace(".wav", "_demographics.txt")
+            demo_cache = seg['seg_filename'].replace(".wav", "_emodim.txt")
 
             if cache and os.path.exists(demo_cache):
                 try:

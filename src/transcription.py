@@ -382,6 +382,7 @@ def transcribe_segments(
                 {
                     "idx": idx,
                     "speaker": row_speaker,
+                    "origin_filename": audio_path,
                     "start_sec": start,
                     "end_sec": end,
                     "transcription": "",
@@ -398,6 +399,7 @@ def transcribe_segments(
             {
                 "idx": idx,
                 "speaker": row_speaker,
+                "origin_filename": audio_path,
                 "start_sec": start,
                 "end_sec": end,
                 "seg_filename": seg_filename,
@@ -472,6 +474,7 @@ def transcribe_segments(
                     "speaker": seg_info["speaker"],
                     "start_sec": seg_info["start_sec"],
                     "end_sec": seg_info["end_sec"],
+                    "origin_filename": seg_info["origin_filename"],
                     "seg_filename": seg_info["seg_filename"],
                     "duration_sec": seg_info["end_sec"] - seg_info["start_sec"],
                     "transcription": "",
@@ -483,6 +486,7 @@ def transcribe_segments(
                     "speaker": seg_info["speaker"],
                     "start_sec": seg_info["start_sec"],
                     "end_sec": seg_info["end_sec"],
+                    "origin_filename": seg_info["origin_filename"],
                     "seg_filename": seg_info["seg_filename"],
                     "duration_sec": seg_info["end_sec"] - seg_info["start_sec"],
                     "transcription": transcriptions[seg_info["seg_filename"]],

@@ -2,6 +2,7 @@ import os
 import gc
 import torch
 import pandas as pd
+from tqdm.auto import tqdm
 import torch.nn.functional as F
 from typing import Any, Dict, List, Optional
 from .char_inference import _batch_files, _char_predict_batch_inference, TransformersCharModel
@@ -67,7 +68,7 @@ def predict_emotion_segments(
     batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
-    for batch in batches:
+    for batch in tqdm(batches, desc=f"Processing {len(batches)} emotions batches"):
         files_to_predict = []
         file_indices = []
         batch_results = [None] * len(batch)

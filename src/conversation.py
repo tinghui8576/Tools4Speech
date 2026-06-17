@@ -700,7 +700,7 @@ def process_conversation(
     trans_df = pd.read_csv(final_labels_path, sep="\t")
     segments_by_speaker: Dict[str, pd.DataFrame] = {}
     for speaker in speakers:
-        segments_by_speaker[speaker] = trans_df[trans_df["speaker"] == speaker]
+        segments_by_speaker[speaker] = df_merged_context[df_merged_context["speaker"] == speaker]
 
     final_results = []
     raw_agesex_path = os.path.join(output_dir, "raw_agesex.txt")
@@ -711,13 +711,11 @@ def process_conversation(
         device=device,
         model_batch_size=batch_size,
     )
-
     emo_model = load_SER_model(
         SER_model_name=SER_model_name,
         device=device,
         model_batch_size=batch_size,
     )
-    
     emo_dim_model = load_emo_dim_model(
         emo_dim_model_name = emo_dim_model_name,
         device=device,
@@ -729,8 +727,6 @@ def process_conversation(
         emo_dim_map = predict_emotion_dim_segments(emo_dim_model, segments, output_dir="outputs/emo_dim", cache=False)
         for idx, row in segments.iterrows():
             # Look up the prediction using the true pandas DataFrame row index (idx)
-            demo_pred = demo_predicts_map.get(idx)
-            emo_pred = emo_predicts_map.get(idx)
             
             final_results.append({
                 "speaker": row["speaker"],
@@ -738,12 +734,14 @@ def process_conversation(
                 "end_sec": row["end_sec"],
                 "age": demo_predicts_map.get(idx)["age"],
                 "sex": demo_predicts_map.get(idx)["sex"],
-                "EmoCat": emo_predicts_map.get(idx),
-                "EmoDim": emo_dim_map.get(idx),
-                "file_source": row.get("seg_filename", f"segment_{idx}.wav")
+                "emoCat": emo_predicts_map.get(idx)['EmoCat'],
+                "arousal": emo_dim_map.get(idx)['arousal'],
+                "valence": emo_dim_map.get(idx)['valence'],
+                "dominance": emo_dim_map.get(idx)['dominance'],
+                # "seg_filename": row.get("seg_filename", f"segment_{idx}.wav")
             })
     df_all = pd.DataFrame(final_results)
-    df_all = _attach_segment_types(df_all, turns_df)
+    df_all = _attach_segment_types(df_all, df_merged_context)
     df_all.to_csv(raw_agesex_path, sep="\t", index=False)
 
 

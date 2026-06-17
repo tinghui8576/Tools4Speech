@@ -2,6 +2,7 @@ import os
 import gc
 import torch
 import pandas as pd
+from tqdm.auto import tqdm
 import torch.nn.functional as F
 from typing import Any, Dict, List, Optional
 from .char_inference import _batch_files, _char_predict_batch_inference, TransformersCharModel
@@ -66,7 +67,7 @@ def predict_demographics_segments(
     batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
-    for batch in batches:
+    for batch in tqdm(batches, desc=f"Processing {len(batches)} demographic batches"):
         files_to_predict = []
         file_indices = []
         batch_results = [None] * len(batch)
@@ -80,7 +81,7 @@ def predict_demographics_segments(
                         cached_text = cache_file.read().strip()
                     if not cached_text.startswith("[AGE_SEX_PREDICTION_FAILED:"):
                         parts = cached_text.split(" | ")
-                        age = float(parts[0].split(": ")[1])
+                        age = int(parts[0].split(": ")[1])
                         sex = parts[1].split(": ")[1]
                         batch_results[i] = {"age": age, "sex": sex}
                         continue
@@ -100,7 +101,7 @@ def predict_demographics_segments(
             sex_indices = torch.argmax(sex_probs, dim=1).detach().cpu().tolist()
             # Map generated data targets back into batch metrics
             for batch_idx, sex_idx  in zip(file_indices, sex_indices):
-                current_age = float(age_preds[batch_idx])
+                current_age = int(age_preds[batch_idx])
                 current_sex = SEX_UNIQUE_LABELS[sex_idx]
 
                 batch_results[batch_idx] = {
