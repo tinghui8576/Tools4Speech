@@ -32,14 +32,13 @@ def load_SER_model(
     if "wavlm" in SER_model_name:
         backend = "wavlm-large"
         model = WavLMWrapper.from_pretrained(SER_model_name).to(device)
-        model.eval() 
     elif "whisper" in SER_model_name:
         backend = 'whisper'
-        model = WhisperWrapper.from_pretrained(SER_model_name).to(device)
-        model.eval() 
+        # model = WhisperWrapper.from_pretrained(SER_model_name).to(device)
+        raise ValueError(f"Unmatch package version for model: {SER_model_name}. Need updates to fit in pipeline")
     else:
         raise ValueError(f"Unsupported model or backend: {SER_model_name}")
-    
+    model.eval() 
     if compute_type == "float16" and device == "cuda":
         model = model.half()
     return TransformersCharModel(
@@ -60,13 +59,12 @@ def predict_emotion_segments(
     output_dir: str,
     cache: bool = True,
     batch_size: Optional[float] = 30.0,
-    min_duration_samples: int = 1600,
 ) -> Dict[str, Any]:
     """
     Slices segments into dynamic batches, verifies disk-cached files, 
     and passes uncached elements to WavLM batch inference before returning results.
     """
-    batches = _batch_files(segments, output_dir, batch_size)
+    batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
     for batch in batches:
@@ -94,7 +92,7 @@ def predict_emotion_segments(
 
         # Model Inference execution block 
         if files_to_predict:
-            outputs = _char_predict_batch_inference(files_to_predict, model)
+            outputs = _char_predict_batch_inference(files_to_predict, model, max_duration_samples=15.0)
             emotion_prob = F.softmax(outputs[0], dim=1)
             emo_indices = torch.argmax(emotion_prob, dim=1).cpu().tolist()
             # Map generated data targets back into batch metrics

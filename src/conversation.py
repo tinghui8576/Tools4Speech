@@ -242,6 +242,9 @@ def process_conversation(
     merge_max_dur: float = 60.0,
     bridge_short_opponent: bool = True,
     transcription_model_name: str = "large-v3",
+    SER_model_name: str = "tiantiaf/wavlm-large-categorical-emotion",
+    emo_dim_model_name: str = "tiantiaf/wavlm-large-msp-podcast-emotion-dim",
+    agesex_model_name: str = "tiantiaf/wavlm-large-age-sex",
     whisper_device: str = "auto",
     whisper_language: str = "da",
     whisper_model_batch_size: int = 100,
@@ -701,29 +704,24 @@ def process_conversation(
 
     final_results = []
     raw_agesex_path = os.path.join(output_dir, "raw_agesex.txt")
-    agesex_model_batch_size = 10
-    agesex_model_name = "tiantiaf/wavlm-large-age-sex"
+
     device = "auto"
     demo_model = load_age_sex_model(
         agesex_model_name=agesex_model_name,
         device=device,
-        model_batch_size=agesex_model_batch_size,
+        model_batch_size=batch_size,
     )
-
-    SER_model_batch_size = 10
-    SER_model_name = "tiantiaf/whisper-large-v3-msp-podcast-emotion" #"tiantiaf/wavlm-large-categorical-emotion"
 
     emo_model = load_SER_model(
         SER_model_name=SER_model_name,
         device=device,
-        model_batch_size=SER_model_batch_size,
+        model_batch_size=batch_size,
     )
-    emo_dim_model_name = "tiantiaf/whisper-large-v3-msp-podcast-emotion-dim"
-    emo_batch_size = 10
+    
     emo_dim_model = load_emo_dim_model(
         emo_dim_model_name = emo_dim_model_name,
         device=device,
-        model_batch_size=emo_batch_size,
+        model_batch_size=batch_size,
     )
     for speaker, segments in tqdm(segments_by_speaker.items(), desc=f"Processing {len(segments_by_speaker)} characteristics profiling"):
         demo_predicts_map = predict_demographics_segments(demo_model, segments, output_dir="outputs/demographics", cache=False)

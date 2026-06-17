@@ -63,7 +63,7 @@ def predict_demographics_segments(
     Slices segments into dynamic batches, verifies disk-cached files, 
     and passes uncached elements to WavLM batch inference before returning results.
     """
-    batches = _batch_files(segments, output_dir, batch_size)
+    batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
     for batch in batches:
@@ -92,7 +92,7 @@ def predict_demographics_segments(
 
         # Model Inference execution block 
         if files_to_predict:
-            outputs = _char_predict_batch_inference(files_to_predict, model)
+            outputs = _char_predict_batch_inference(files_to_predict, model, max_duration_samples=15.0)
 
             # Safely detach and process the outputs
             age_preds = (outputs[0].detach().cpu().numpy() * 100).flatten()

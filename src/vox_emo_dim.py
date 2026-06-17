@@ -25,17 +25,15 @@ def load_emo_dim_model(
 
     if "wavlm" in emo_dim_model_name:
         backend = "wavlm-large"
-        model = WavLMWrapper.from_pretrained(emo_dim_model_name).to(device)
-        model.eval() 
-        
-        
+        model = WavLMWrapper.from_pretrained(emo_dim_model_name).to(device)   
     elif "whisper" in emo_dim_model_name:
         backend = 'whisper'
-        model = WhisperWrapper.from_pretrained(emo_dim_model_name).to(device)
-        model.eval() 
+        # model = WhisperWrapper.from_pretrained(emo_dim_model_name).to(device)
+        raise ValueError(f"Unmatch package version for model: {emo_dim_model_name}. Need updates to fit in pipeline")
     else:
         raise ValueError(f"Unsupported model or backend: {emo_dim_model_name}")
     
+    model.eval() 
     if compute_type == "float16" and device == "cuda":
         model = model.half()
     return TransformersCharModel(
@@ -62,7 +60,7 @@ def predict_emotion_dim_segments(
     Slices segments into dynamic batches, verifies disk-cached files, 
     and passes uncached elements to WavLM batch inference before returning results.
     """
-    batches = _batch_files(segments, output_dir, batch_size)
+    batches = _batch_files(segments, output_dir, batch_size, max_duration_samples= 15.0)
     predictions_map = {}
 
     for batch in batches:
@@ -92,7 +90,7 @@ def predict_emotion_dim_segments(
 
         # Model Inference execution block 
         if files_to_predict:
-            a_head, v_head, d_head = _char_predict_batch_inference(files_to_predict, model)
+            a_head, v_head, d_head = _char_predict_batch_inference(files_to_predict, model, max_duration_samples=15.0)
             v_preds = v_head.detach().cpu().flatten().tolist()
             a_preds = a_head.detach().cpu().flatten().tolist()
             d_preds = d_head.detach().cpu().flatten().tolist()

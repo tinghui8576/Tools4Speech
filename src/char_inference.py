@@ -20,6 +20,7 @@ def _batch_files(
     segments: pd.DataFrame,
     output_dir: str,
     batch_size: Optional[float] = 30.0,
+    max_duration_samples:Optional[float] = 15.0,
 ) ->List[List[Dict[str, Any]]]:
     os.makedirs(output_dir, exist_ok=True)
     
@@ -36,7 +37,7 @@ def _batch_files(
         })
 
     max_batch_duration = (
-        float(batch_size) if batch_size and batch_size > 0 else float("inf")
+        float(max_duration_samples) if max_duration_samples and batch_size > 0 else float("inf")
     )
 
     batches: List[List[Dict[str, Any]]] = []
@@ -69,7 +70,8 @@ def _batch_files(
 
 def _char_predict_batch_inference(
     batch_segments: List[Dict[str, Any]], 
-    model_wrapper: Any
+    model_wrapper: Any,
+    max_duration_samples: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """Loads audio, tracks actual sample lengths, pads them dynamically, and runs batch inference."""
     device = model_wrapper.device
@@ -84,7 +86,8 @@ def _char_predict_batch_inference(
         audio, sr = sf.read(seg["seg_filename"])
         if audio.ndim > 1:
             audio = audio[:, 0]
-            
+        if max_duration_samples and len(audio)/sr > max_duration_samples:
+            audio = audio[:int(max_duration_samples*sr)]
         tensor = torch.tensor(audio, dtype=torch.float32)
         audio_tensors.append(tensor)
         lengths.append(len(tensor))
