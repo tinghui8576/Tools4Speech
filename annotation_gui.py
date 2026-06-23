@@ -47,10 +47,26 @@ def slice_wav_bytes(file_path, start_sec, end_sec):
 if "hidden_fields" not in st.session_state:
     st.session_state.hidden_fields = set()
 
-def field_header(field_name, title):
+# def field_header(field_name, title):
+#     col1, col2 = st.columns([6, 1])
+
+#     # ALWAYS convert to a stable string key
+#     if isinstance(field_name, list):
+#         field_key = "__".join(field_name)
+#     else:
+#         field_key = str(field_name)
+
+#     with col1:
+#         st.markdown(f"##### {title}")
+
+#     with col2:
+#         if st.button("✖", key=f"hide_{field_key}", type="tertiary"):
+#             st.session_state.hidden_fields.add(field_key)
+#             st.rerun()
+def field_header(field_name, title, show_button=True):
     col1, col2 = st.columns([6, 1])
 
-    # ALWAYS convert to a stable string key
+    # Convert to a stable string key
     if isinstance(field_name, list):
         field_key = "__".join(field_name)
     else:
@@ -60,10 +76,14 @@ def field_header(field_name, title):
         st.markdown(f"##### {title}")
 
     with col2:
-        if st.button("✖", key=f"hide_{field_key}", type="tertiary"):
-            st.session_state.hidden_fields.add(field_key)
-            st.rerun()
-
+        if show_button:
+            if st.button("✖", key=f"hide_{field_key}", type="tertiary"):
+                st.session_state.hidden_fields.add(field_key)
+                st.rerun()
+        else:
+            # Inject an empty placeholder space that shares the exact column 
+            # height rules as an active button row container.
+            st.html("<div style='height: 40px;'></div>")
 
 # -----------------------------
 # INTEGRATED DIRTY CHECK CALLBACK
@@ -290,7 +310,7 @@ if df is not None and st.session_state.selected_idx is not None:
             "Isolate Audio Playback Area",
             min_value=0.0,
             max_value=float(total_file_seconds),
-            value=st.session_state[slider_key],
+            # value=st.session_state[slider_key],
             step=0.05,
             format="%.2f seconds",
             key=slider_key,
@@ -373,7 +393,7 @@ if df is not None and st.session_state.selected_idx is not None:
 
             if "sex" not in st.session_state.hidden_fields:
                 with cols[0]:
-                    st.markdown("##### 🧑Sex")
+                    field_header("sex", "🧑 Sex", show_button=False)
                     sex_options = ["Female", "Male", "Other"]
                     if st.session_state.get("current_state") and st.session_state["current_state"].get('sex') is not None:
                         current_sex = st.session_state.current_state["sex"]
@@ -392,7 +412,8 @@ if df is not None and st.session_state.selected_idx is not None:
 
             if "age" not in st.session_state.hidden_fields:
                 with cols[1]:
-                    st.markdown("##### ⏳Age")
+                    # st.markdown("##### ⏳Age")
+                    field_header("age", "⏳Age")
                     if st.session_state.get("current_state") and st.session_state["current_state"].get('age') is not None:
                         current_age = int(st.session_state.current_state["age"])
                     else:
@@ -446,7 +467,8 @@ if df is not None and st.session_state.selected_idx is not None:
             )
             if "arousal__valence__dominance" not in st.session_state.hidden_fields:
                 with cols[1]:
-                    st.markdown("##### 📈 Arousal")
+                    field_header(["arousal", "valence", "dominance"], "📈 Arousal", show_button=False)
+                    # st.markdown("##### 📈 Arousal")
                     final_arousal = st.slider(
                         "Arousal Level:", 0.0, 1.0,
                         value=current_arousal,
@@ -454,7 +476,8 @@ if df is not None and st.session_state.selected_idx is not None:
                         on_change=check_dirty_callback
                     )
                 with cols[2]:
-                    st.markdown("##### 📉 Valence")
+                    field_header(["arousal", "valence", "dominance"], "📉 Valence", show_button=False)
+                    # st.markdown("##### 📉 Valence")
                     final_valence = st.slider(
                         "Valence Level:", 0.0, 1.0,
                         value=float(current_valence),
@@ -462,7 +485,7 @@ if df is not None and st.session_state.selected_idx is not None:
                         on_change=check_dirty_callback
                     )
                 with cols[3]:
-                    field_header(["arousal", "valence", "dominance"], "👑 Dominance")
+                    field_header(["arousal", "valence", "dominance"], "Dominance")
                     final_dominance = st.slider(
                         "Dominance Level:", 0.0, 1.0,
                         value=float(current_dominance),
@@ -510,9 +533,12 @@ if df is not None and st.session_state.selected_idx is not None:
             df.at[idx, "transcription"] = new_text
             df.at[idx, "speaker"] = final_speaker
             df.at[idx, "type"] = final_type
-            df.at[idx, "sex"] = final_sex
-            df.at[idx, "age"] = final_age
-            df.at[idx, "emoCat"] = final_emotion
+            if "sex" not in st.session_state.hidden_fields:
+                df.at[idx, "sex"] = final_sex
+            if "age" not in st.session_state.hidden_fields:
+                df.at[idx, "age"] = final_age
+            if "emoCat" not in st.session_state.hidden_fields:
+                df.at[idx, "emoCat"] = final_emotion
             if "arousal__valence__dominance" not in st.session_state.hidden_fields:
                 df.at[idx, "arousal"] = round(final_arousal, 2)
                 df.at[idx, "valence"] = round(final_valence, 2)
