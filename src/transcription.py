@@ -492,22 +492,22 @@ def transcribe_segments(
                     "transcription": transcriptions[seg_info["seg_filename"]],
                 }
             )
-
+    print(results)
     # If caching of transcripts is disabled, remove per-segment WAV files
     # and any transient transcript caches to avoid consuming disk space.
-    if not cache:
-        for seg_info in valid_segments:
-            seg_filename_to_remove: Optional[str] = seg_info.get("seg_filename")
-            txt_cache_to_remove: Optional[str] = seg_info.get("txt_cache")
-            try:
-                if seg_filename_to_remove and os.path.exists(seg_filename_to_remove):
-                    os.remove(seg_filename_to_remove)
-            except OSError:
-                pass
-            try:
-                if txt_cache_to_remove and os.path.exists(txt_cache_to_remove):
-                    os.remove(txt_cache_to_remove)
-            except OSError:
-                pass
+    # if not cache:
+    #     for seg_info in valid_segments:
+    #         seg_filename_to_remove: Optional[str] = seg_info.get("seg_filename")
+    #         txt_cache_to_remove: Optional[str] = seg_info.get("txt_cache")
+    #         try:
+    #             if seg_filename_to_remove and os.path.exists(seg_filename_to_remove):
+    #                 os.remove(seg_filename_to_remove)
+    #         except OSError:
+    #             pass
+    #         try:
+    #             if txt_cache_to_remove and os.path.exists(txt_cache_to_remove):
+    #                 os.remove(txt_cache_to_remove)
+    #         except OSError:
+    #             pass
 
     return results

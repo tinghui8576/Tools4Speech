@@ -1164,6 +1164,104 @@ def main() -> None:
             )
         )
 
+    # -----------------------------
+    # METADATA SOURCE
+    # -----------------------------
+    with st.expander("Metadata Generation Configuration", expanded=True):
+        import pandas as pd
+        
+        left_col, right_col = st.columns([1, 1])
+        _existing_metadata = set()
+        generate_metadata = []
+        with left_col:
+            _metadata_source = st.radio(
+                "Metadata source",
+                [   
+                    "Skip Metadata Generation",
+                    "Run Models Automatically",
+                    "Use Existing Metadata",
+
+                ],
+                key="metadata_source"
+            )
+
+            uploaded_metadata = None
+            
+            if _metadata_source == "Use Existing Metadata":
+                uploaded_metadata = st.file_uploader(
+                    "Upload metadata file",
+                    type=["csv", "tsv", "txt"]
+                )
+                if uploaded_metadata:
+
+                    if uploaded_metadata.name.endswith(".csv"):
+                        metadata_df = pd.read_csv(uploaded_metadata)
+                    else:
+                        metadata_df = pd.read_csv(uploaded_metadata, sep="\t")
+                        
+
+                    _existing_metadata = set(metadata_df.columns)
+
+                    st.success("Metadata loaded")
+                
+
+        has_age = "age" in _existing_metadata
+        has_sex = "sex" in _existing_metadata
+        has_emocat = "emoCat" in _existing_metadata
+        has_arousal = "arousal" in _existing_metadata
+        has_valence = "valence" in _existing_metadata
+        has_dominance = "dominance" in _existing_metadata
+
+        with right_col:
+            if _metadata_source == "Use Existing Metadata":
+                st.write("Existing Metadata")
+
+                status_df = pd.DataFrame({
+                    "Metadata": [
+                        "Age/Sex",
+                        "Emotion Category",
+                        "Emotion Dimensions"
+                    ],
+                    "Status": [
+                        "Available" if has_age and has_sex else "Missing",
+                        "Available" if has_emocat else "Missing",
+                        "Available" if has_arousal and has_valence and has_dominance else "Missing",
+                    ]
+                })
+
+                st.dataframe(
+                    status_df,
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+        if _metadata_source != "Skip Metadata Generation":
+            available = {
+                "Age/Sex": has_age and has_sex,
+                "Emotion Category": has_emocat,
+                "Emotion Dimensions": (
+                    has_arousal and
+                    has_valence and
+                    has_dominance
+                )
+            }
+            missing_options = [
+                name
+                for name, exists in available.items()
+                if not exists
+            ]
+            generate_metadata = st.multiselect(
+                "Generate metadata",
+                [
+                    "Age/Sex",
+                    "Emotion Category",
+                    "Emotion Dimensions"
+                ],
+                default=missing_options
+            )
+    
+    if "Age/Sex" in generate_metadata:
+        print(generate_metadata)
     # =========================================================================
     # AUDIO PREPROCESSING
     # =========================================================================
@@ -1483,6 +1581,7 @@ def main() -> None:
                 transcription_padding_sec=transcription_padding_sec,
                 entropy_threshold=entropy_threshold,
                 max_backchannel_dur=max_backchannel_dur,
+                metadata_gen=generate_metadata,
                 max_gap_sec=max_gap_sec,
                 batch_size=batch_size,
                 persist_transcription_artifacts=persist_transcription_artifacts,
@@ -1515,6 +1614,7 @@ def main() -> None:
                 merge_max_dur=merge_max_dur,
                 bridge_short_opponent=bridge_short_opponent,
                 transcription_model_name=transcription_model_name,
+                metadata_gen=generate_metadata,
                 whisper_device=whisper_device,
                 whisper_language=whisper_language,
                 whisper_model_batch_size=whisper_model_batch_size,
@@ -1594,6 +1694,11 @@ def main() -> None:
             st.error(f"**Pipeline failed:**\n\n```\n{st.session_state.error}\n```")
         else:
             st.success("✅ Pipeline completed successfully!")
+            st.page_link(
+                "pages/Annotation_GUI.py",
+                label="🏷️ Open Annotation GUI",
+                icon="🎯"
+            )
             result: dict = st.session_state.result or {}
 
             import io

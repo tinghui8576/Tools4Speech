@@ -245,6 +245,7 @@ def process_conversation(
     SER_model_name: str = "tiantiaf/wavlm-large-categorical-emotion",
     emo_dim_model_name: str = "tiantiaf/wavlm-large-msp-podcast-emotion-dim",
     agesex_model_name: str = "tiantiaf/wavlm-large-age-sex",
+    metadata_gen: List[str] = [],
     whisper_device: str = "auto",
     whisper_language: str = "da",
     whisper_model_batch_size: int = 100,
@@ -697,51 +698,89 @@ def process_conversation(
 
     print(f"✓ Final processing completed: {len(df_merged_context)} total segments")
 
-    trans_df = pd.read_csv(final_labels_path, sep="\t")
     segments_by_speaker: Dict[str, pd.DataFrame] = {}
     for speaker in speakers:
         segments_by_speaker[speaker] = df_merged_context[df_merged_context["speaker"] == speaker]
-
+    
     final_results = []
     raw_agesex_path = os.path.join(output_dir, "raw_agesex.txt")
 
     device = "auto"
-    demo_model = load_age_sex_model(
-        agesex_model_name=agesex_model_name,
-        device=device,
-        model_batch_size=batch_size,
-    )
-    emo_model = load_SER_model(
-        SER_model_name=SER_model_name,
-        device=device,
-        model_batch_size=batch_size,
-    )
-    emo_dim_model = load_emo_dim_model(
-        emo_dim_model_name = emo_dim_model_name,
-        device=device,
-        model_batch_size=batch_size,
-    )
+    requested_metadata = {
+        "Age/Sex": {
+            "loader": lambda: load_age_sex_model(
+                agesex_model_name=agesex_model_name,
+                device=device,
+                model_batch_size=batch_size,
+            ),
+            "predictor": predict_demographics_segments,
+            "columns": ["age", "sex"],
+        },
+        "Emotion Category": {
+            "loader": lambda: load_SER_model(
+                SER_model_name=SER_model_name,
+                device=device,
+                model_batch_size=batch_size,
+            ),
+            "predictor": predict_emotion_segments,
+            "columns": ["emoCat"],
+        },
+        "Emotion Dimensions": {
+            "loader": lambda: load_emo_dim_model(
+                emo_dim_model_name=emo_dim_model_name,
+                device=device,
+                model_batch_size=batch_size,
+            ),
+            "predictor": predict_emotion_dim_segments,
+            "columns": ["arousal", "valence", "dominance"],
+        },
+    }
+    models = {}
+
+    for name in metadata_gen:
+        models[name] = requested_metadata[name]["loader"]()
+
+    prediction_maps = {}
+
+    
+
     for speaker, segments in tqdm(segments_by_speaker.items(), desc=f"Processing {len(segments_by_speaker)} characteristics profiling"):
-        demo_predicts_map = predict_demographics_segments(demo_model, segments, output_dir="outputs/demographics", cache=False)
-        emo_predicts_map = predict_emotion_segments(emo_model, segments, output_dir="outputs/emotions", cache=False)
-        emo_dim_map = predict_emotion_dim_segments(emo_dim_model, segments, output_dir="outputs/emo_dim", cache=False)
+        for name in metadata_gen:
+            print(speaker_dirs[speaker],)
+            prediction_maps[name] = requested_metadata[name]["predictor"](
+                models[name],
+                segments,
+                output_dir=speaker_dirs[speaker],
+                cache=False,
+            )
         for idx, row in segments.iterrows():
-            # Look up the prediction using the true pandas DataFrame row index (idx)
-            
-            final_results.append({
+
+            result = {
                 "speaker": row["speaker"],
-                "start_sec": row["start_sec"],
-                "end_sec": row["end_sec"],
-                "age": demo_predicts_map.get(idx)["age"],
-                "sex": demo_predicts_map.get(idx)["sex"],
-                "emoCat": emo_predicts_map.get(idx)['EmoCat'],
-                "arousal": emo_dim_map.get(idx)['arousal'],
-                "valence": emo_dim_map.get(idx)['valence'],
-                "dominance": emo_dim_map.get(idx)['dominance'],
-                # "seg_filename": row.get("seg_filename", f"segment_{idx}.wav")
-            })
+                "origin_filename": row["origin_filename"],
+                "seg_filename": row["seg_filename"],
+            }
+
+            if "Age/Sex" in prediction_maps:
+                pred = prediction_maps["Age/Sex"].get(idx, {})
+                result["age"] = pred.get("age")
+                result["sex"] = pred.get("sex")
+
+            if "Emotion Category" in prediction_maps:
+                pred = prediction_maps["Emotion Category"].get(idx, {})
+                result["emoCat"] = pred.get("EmoCat")
+
+            if "Emotion Dimensions" in prediction_maps:
+                pred = prediction_maps["Emotion Dimensions"].get(idx, {})
+                result["arousal"] = pred.get("arousal")
+                result["valence"] = pred.get("valence")
+                result["dominance"] = pred.get("dominance")
+
+            final_results.append(result)
+
     df_all = pd.DataFrame(final_results)
-    df_all = _attach_segment_types(df_all, df_merged_context)
+    # df_all = df_all.merge(df_merged_context, on=["speaker", "start_sec", "end_sec"], how="left")
+    
     df_all.to_csv(raw_agesex_path, sep="\t", index=False)
 
 
