@@ -61,6 +61,7 @@ def example_dyad() -> dict:
         },
         "output_dir": "outputs/dyad",
         "vad_type": "rvad",
+        "metadata_gen":["Age/Sex","Emotion Category","Emotion Dimensions"],
         "persist_transcription_artifacts": True,
         "cleanup_speaker_folders": False,
     }

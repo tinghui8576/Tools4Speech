@@ -81,13 +81,15 @@ def _char_predict_batch_inference(
     lengths = []
     max_len = 0
     
-    # 1. Load raw audio and track original lengths (From your working snippet)
+    # 1. Load raw audio and track original lengths
     for seg in batch_segments:
         audio, sr = sf.read(seg["seg_filename"])
         if audio.ndim > 1:
             audio = audio[:, 0]
         if max_duration_samples and len(audio)/sr > max_duration_samples:
             audio = audio[:int(max_duration_samples*sr)]
+            
+        # Create standard float32 tensor on CPU first
         tensor = torch.tensor(audio, dtype=torch.float32)
         audio_tensors.append(tensor)
         lengths.append(len(tensor))
@@ -102,16 +104,16 @@ def _char_predict_batch_inference(
             tensor = F.pad(tensor, (0, pad_size), "constant", 0.0)
         padded_tensors.append(tensor)
         
-    # 3. Stack arrays and lengths into shapes expected by the model
+    # 3. Stack arrays and lengths, sending them directly to the target device
     input_batch = torch.stack(padded_tensors).to(device)
     input_lengths = torch.tensor(lengths, dtype=torch.long).to(device)
+        
+    # 4. Model Inference Execution using Autocast
+    # Determine if we should use mixed precision based on your wrapper config
+    use_fp16 = getattr(model_wrapper, "compute_type", None) == "float16" and "cuda" in str(device)
     
-    if getattr(model_wrapper, "compute_type", None) == "float16" and device == "cuda":
-        input_batch = input_batch.half()
-        
-    # 4. Model Inference Execution with lengths
     with torch.no_grad():
-        # Passing length=input_lengths directly to fix the masking IndexError!
-        outputs = model(input_batch, length=input_lengths)
+        with torch.amp.autocast(device_type="cuda" if "cuda" in str(device) else "cpu", enabled=use_fp16):
+            outputs = model(input_batch, length=input_lengths)
+            
     return outputs
-        

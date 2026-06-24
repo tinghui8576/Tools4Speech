@@ -9,8 +9,16 @@ import numpy as np
 # -----------------------------
 # CONFIG
 # -----------------------------
-METADATA_FILE = "outputs/dyad/raw_agesex.txt"
-UPDATED_METADATA_FILE = "outputs/dyad/updated_labels.txt"
+#  result.get("output_dir", "")
+# result = st.session_state.get("result")
+# annotation_file = st.session_state.get("annotation_file")
+# transcript = result.get("final_labels")
+TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/final_labels.txt"
+UPDATED_TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_labels.txt"
+METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/raw_agesex.txt"
+UPDATED_METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_meta.txt"
+TF_COLS=None
+MD_COLS=None
 
 st.set_page_config(page_title="Visual Timeline Audio Trimmer", layout="wide")
 st.title("✂️ Visual Audio Range Trimmer & Editor")
@@ -131,17 +139,40 @@ def check_dirty_callback():
 # LOAD DATA
 # -----------------------------
 def load_data():
-    target_file = UPDATED_METADATA_FILE if os.path.exists(UPDATED_METADATA_FILE) else METADATA_FILE
+    transcription_file = (
+        UPDATED_TRANSCRIPT_FILE
+        if os.path.exists(UPDATED_TRANSCRIPT_FILE)
+        else TRANSCRIPT_FILE
+    )
 
-    if not os.path.exists(target_file):
-        st.error(f"Metadata file not found: {target_file}")
+    metadata_file = (
+        UPDATED_METADATA_FILE
+        if os.path.exists(UPDATED_METADATA_FILE)
+        else METADATA_FILE
+    )
+
+    if not os.path.exists(transcription_file):
+        st.error(f"Missing transcription file: {transcription_file}")
         return None
 
-    df = pd.read_csv(target_file, sep="\t")
-    if len(df.columns) <= 1:
-        df = pd.read_csv(target_file, sep=",")
+    if not os.path.exists(metadata_file):
+        st.error(f"Missing metadata file: {metadata_file}")
+        return None
 
-    df.columns = df.columns.str.strip()
+    df_ts = pd.read_csv(transcription_file, sep="\t")
+    df_md = pd.read_csv(metadata_file, sep="\t")
+
+    # clean column names
+    # df_ts.columns = df_ts.columns.str.strip()
+    # df_md.columns = df_md.columns.str.strip()
+    TF_COLS=df_ts.columns.str.strip()
+    MD_COLS=df_md.columns.str.strip()
+    if "seg_filename" not in df_ts.columns or "seg_filename" not in df_md.columns:
+        st.error("Missing 'seg_filename' column in one of the files")
+        return None
+    # IMPORTANT: merge on filename
+    df = df_ts.merge(df_md, on=["seg_filename","speaker"], how="inner")
+    print(df)
     return df
 
 
@@ -158,6 +189,19 @@ def load_snapshot(row):
         "dominance": row.get("dominance", 0.5),
     }
 
+
+def save_data(df):
+    if TF_COLS is None or MD_COLS is None:
+        st.error("Column schema not initialized")
+        return
+
+    # restore original column order safely
+    df_ts = df[TF_COLS].copy()
+    df_md = df[MD_COLS].copy()
+
+    # write file
+    df_ts.to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
+    df_md.to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
 
 # -----------------------------
 # SESSION INIT
@@ -545,13 +589,9 @@ if df is not None and st.session_state.selected_idx is not None:
                 df.at[idx, "dominance"] = round(final_dominance, 2)
 
             try:
-                with open(UPDATED_METADATA_FILE, "w", encoding="utf-8", newline="") as f:
-                    csv_data = df.to_csv(index=False, sep="\t")
-                    f.write(csv_data)
-                    f.flush()        
-                    os.fsync(f.fileno()) 
+                save_data(df)
             except Exception as e:
-                st.error(f"Critical writing exception encountered: {e}")
+                st.error(f"Save failed: {e}")
                 st.stop()
                 
             st.session_state[dirty_key] = False

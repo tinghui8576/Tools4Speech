@@ -746,7 +746,6 @@ def process_conversation(
 
     for speaker, segments in tqdm(segments_by_speaker.items(), desc=f"Processing {len(segments_by_speaker)} characteristics profiling"):
         for name in metadata_gen:
-            print(speaker_dirs[speaker],)
             prediction_maps[name] = requested_metadata[name]["predictor"](
                 models[name],
                 segments,
@@ -757,7 +756,7 @@ def process_conversation(
 
             result = {
                 "speaker": row["speaker"],
-                "origin_filename": row["origin_filename"],
+                # "origin_filename": row["origin_filename"],
                 "seg_filename": row["seg_filename"],
             }
 

@@ -636,6 +636,7 @@ def main() -> None:
     st.set_page_config(
         page_title="Speech Pipeline",
         page_icon="🗣️",
+        initial_sidebar_state="collapsed",
         layout="wide",
     )
     st.title("🗣️ Speech VAD / Diarization / Transcription")
@@ -1568,98 +1569,106 @@ def main() -> None:
     _continue_ready = _continue_mode and (existing_path is not None) and _audio_ready
     _full_ready = (not _continue_mode) and _audio_ready
     run_disabled = st.session_state.running or not (_continue_ready or _full_ready)
-    if st.button("▶  Run Pipeline", type="primary", disabled=run_disabled):
-        if _continue_mode:
-            kwargs: dict[str, Any] = dict(
-                existing_path=existing_path,
-                speakers_audio=speakers_audio,
-                output_dir=output_dir,
-                transcription_model_name=transcription_model_name,
-                whisper_device=whisper_device,
-                whisper_language=whisper_language,
-                whisper_model_batch_size=whisper_model_batch_size,
-                transcription_padding_sec=transcription_padding_sec,
-                entropy_threshold=entropy_threshold,
-                max_backchannel_dur=max_backchannel_dur,
-                metadata_gen=generate_metadata,
-                max_gap_sec=max_gap_sec,
-                batch_size=batch_size,
-                persist_transcription_artifacts=persist_transcription_artifacts,
-                cleanup_speaker_folders=cleanup_speaker_folders,
-                min_duration_samples=float(min_duration_samples),
-                export_elan=export_elan,
-                evaluate_ref_path=evaluate_ref_path,
-                evaluate_stages=evaluate_stages,
-                evaluate_collar=evaluate_collar,
-                evaluate_plot=evaluate_plot,
-                evaluate_plot_format=evaluate_plot_format,
-                evaluate_plot_dpi=evaluate_plot_dpi,
-            )
-            _worker = _continue_worker
-        else:
-            kwargs = dict(
-                speakers_audio=speakers_audio,
-                output_dir=output_dir,
-                vad_type=vad_type,
-                rvad_threshold=rvad_threshold,
-                auth_token=auth_token,
-                vad_min_duration=vad_min_duration,
-                energy_margin_db=energy_margin_db,
-                gap_thresh=gap_thresh,
-                short_utt_thresh=short_utt_thresh,
-                window_sec=window_sec,
-                merge_short_after_long=merge_short_after_long,
-                merge_long_after_short=merge_long_after_short,
-                long_merge_enabled=long_merge_enabled,
-                merge_max_dur=merge_max_dur,
-                bridge_short_opponent=bridge_short_opponent,
-                transcription_model_name=transcription_model_name,
-                metadata_gen=generate_metadata,
-                whisper_device=whisper_device,
-                whisper_language=whisper_language,
-                whisper_model_batch_size=whisper_model_batch_size,
-                transcription_padding_sec=transcription_padding_sec,
-                entropy_threshold=entropy_threshold,
-                max_backchannel_dur=max_backchannel_dur,
-                max_gap_sec=max_gap_sec,
-                batch_size=batch_size,
-                interactive_energy_filter=False,
-                skip_vad_if_exists=skip_vad_if_exists,
-                skip_transcription_if_exists=skip_transcription_if_exists,
-                persist_transcription_artifacts=persist_transcription_artifacts,
-                cleanup_speaker_folders=cleanup_speaker_folders,
-                cleanup_preprocessed=cleanup_preprocessed,
-                min_duration_samples=float(min_duration_samples),
-                export_elan=export_elan,
-                preprocess_config=preprocess_config,
-                preprocess_config_mild=preprocess_config_mild,
-                preprocess_config_strong=preprocess_config_strong,
-                evaluate_ref_path=evaluate_ref_path,
-                evaluate_stages=evaluate_stages,
-                evaluate_collar=evaluate_collar,
-                evaluate_plot=evaluate_plot,
-                evaluate_plot_format=evaluate_plot_format,
-                evaluate_plot_dpi=evaluate_plot_dpi,
-            )
-            _worker = _pipeline_worker
 
-        shared: dict[str, Any] = {
-            "log_lines": [],
-            "result": None,
-            "error": None,
-            "done": False,
-        }
-        thread = threading.Thread(target=_worker, args=(kwargs, shared), daemon=True)
-        st.session_state.log_lines = shared["log_lines"]
-        st.session_state._shared = shared
-        st.session_state._thread = thread
-        st.session_state.running = True
-        st.session_state.done = False
-        st.session_state.result = None
-        st.session_state.error = None
-        thread.start()
-        st.rerun()
+    col_run, col_reset = st.columns([1, 1])
 
+    with col_run:
+        if st.button("▶  Run Pipeline", type="primary", disabled=run_disabled):
+            if _continue_mode:
+                kwargs: dict[str, Any] = dict(
+                    existing_path=existing_path,
+                    speakers_audio=speakers_audio,
+                    output_dir=output_dir,
+                    transcription_model_name=transcription_model_name,
+                    whisper_device=whisper_device,
+                    whisper_language=whisper_language,
+                    whisper_model_batch_size=whisper_model_batch_size,
+                    transcription_padding_sec=transcription_padding_sec,
+                    entropy_threshold=entropy_threshold,
+                    max_backchannel_dur=max_backchannel_dur,
+                    metadata_gen=generate_metadata,
+                    max_gap_sec=max_gap_sec,
+                    batch_size=batch_size,
+                    persist_transcription_artifacts=persist_transcription_artifacts,
+                    cleanup_speaker_folders=cleanup_speaker_folders,
+                    min_duration_samples=float(min_duration_samples),
+                    export_elan=export_elan,
+                    evaluate_ref_path=evaluate_ref_path,
+                    evaluate_stages=evaluate_stages,
+                    evaluate_collar=evaluate_collar,
+                    evaluate_plot=evaluate_plot,
+                    evaluate_plot_format=evaluate_plot_format,
+                    evaluate_plot_dpi=evaluate_plot_dpi,
+                )
+                _worker = _continue_worker
+            else:
+                kwargs = dict(
+                    speakers_audio=speakers_audio,
+                    output_dir=output_dir,
+                    vad_type=vad_type,
+                    rvad_threshold=rvad_threshold,
+                    auth_token=auth_token,
+                    vad_min_duration=vad_min_duration,
+                    energy_margin_db=energy_margin_db,
+                    gap_thresh=gap_thresh,
+                    short_utt_thresh=short_utt_thresh,
+                    window_sec=window_sec,
+                    merge_short_after_long=merge_short_after_long,
+                    merge_long_after_short=merge_long_after_short,
+                    long_merge_enabled=long_merge_enabled,
+                    merge_max_dur=merge_max_dur,
+                    bridge_short_opponent=bridge_short_opponent,
+                    transcription_model_name=transcription_model_name,
+                    metadata_gen=generate_metadata,
+                    whisper_device=whisper_device,
+                    whisper_language=whisper_language,
+                    whisper_model_batch_size=whisper_model_batch_size,
+                    transcription_padding_sec=transcription_padding_sec,
+                    entropy_threshold=entropy_threshold,
+                    max_backchannel_dur=max_backchannel_dur,
+                    max_gap_sec=max_gap_sec,
+                    batch_size=batch_size,
+                    interactive_energy_filter=False,
+                    skip_vad_if_exists=skip_vad_if_exists,
+                    skip_transcription_if_exists=skip_transcription_if_exists,
+                    persist_transcription_artifacts=persist_transcription_artifacts,
+                    cleanup_speaker_folders=cleanup_speaker_folders,
+                    cleanup_preprocessed=cleanup_preprocessed,
+                    min_duration_samples=float(min_duration_samples),
+                    export_elan=export_elan,
+                    preprocess_config=preprocess_config,
+                    preprocess_config_mild=preprocess_config_mild,
+                    preprocess_config_strong=preprocess_config_strong,
+                    evaluate_ref_path=evaluate_ref_path,
+                    evaluate_stages=evaluate_stages,
+                    evaluate_collar=evaluate_collar,
+                    evaluate_plot=evaluate_plot,
+                    evaluate_plot_format=evaluate_plot_format,
+                    evaluate_plot_dpi=evaluate_plot_dpi,
+                )
+                _worker = _pipeline_worker
+
+            shared: dict[str, Any] = {
+                "log_lines": [],
+                "result": None,
+                "error": None,
+                "done": False,
+            }
+            thread = threading.Thread(target=_worker, args=(kwargs, shared), daemon=True)
+            st.session_state.log_lines = shared["log_lines"]
+            st.session_state._shared = shared
+            st.session_state._thread = thread
+            st.session_state.running = True
+            st.session_state.done = False
+            st.session_state.result = None
+            st.session_state.error = None
+            thread.start()
+            st.rerun()
+    with col_reset:
+        if st.session_state.done:
+            if st.button("🔄  Reset / run again"):
+                _reset_state()
+                st.rerun()
     # =========================================================================
     # LIVE LOG (while running)
     # =========================================================================
@@ -1694,11 +1703,8 @@ def main() -> None:
             st.error(f"**Pipeline failed:**\n\n```\n{st.session_state.error}\n```")
         else:
             st.success("✅ Pipeline completed successfully!")
-            st.page_link(
-                "pages/Annotation_GUI.py",
-                label="🏷️ Open Annotation GUI",
-                icon="🎯"
-            )
+            if st.button("🏷️ Open Annotation GUI for continue annotation"):
+                st.switch_page("pages/annotation_gui.py")
             result: dict = st.session_state.result or {}
 
             import io
@@ -1933,9 +1939,9 @@ def main() -> None:
                     st.code("\n".join(st.session_state.log_lines), language="")
 
         st.divider()
-        if st.button("🔄  Reset / run again"):
-            _reset_state()
-            st.rerun()
+        # if st.button("🔄  Reset / run again"):
+        #     _reset_state()
+        #     st.rerun()
 
 
 if __name__ == "__main__":

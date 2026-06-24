@@ -492,7 +492,6 @@ def transcribe_segments(
                     "transcription": transcriptions[seg_info["seg_filename"]],
                 }
             )
-    print(results)
     # If caching of transcripts is disabled, remove per-segment WAV files
     # and any transient transcript caches to avoid consuming disk space.
     # if not cache:
