@@ -7,34 +7,27 @@ import streamlit as st
 import numpy as np
 
 # -----------------------------
-# CONFIG
+# CONFIG & PATH CONSTANTS
 # -----------------------------
-#  result.get("output_dir", "")
-# result = st.session_state.get("result")
-# annotation_file = st.session_state.get("annotation_file")
-# transcript = result.get("final_labels")
 TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/final_labels.txt"
 UPDATED_TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_labels.txt"
 METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/raw_agesex.txt"
 UPDATED_METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_meta.txt"
-TF_COLS=None
-MD_COLS=None
 
-st.set_page_config(page_title="Visual Timeline Audio Trimmer", layout="wide")
+st.set_page_config(page_title="Visual Timeline Audio Trimmer", initial_sidebar_state="expanded", layout="wide")
 st.title("✂️ Visual Audio Range Trimmer & Editor")
 
-
 # -----------------------------
-# AUDIO SLICER
+# FILE & AUDIO UTILITIES
 # -----------------------------
-def slice_wav_bytes(file_path, start_sec, end_sec):
+def slice_wav_bytes(file_path: str, start_sec: float, end_sec: float) -> bytes:
+    """Extracts segment slices from a wav file source structure safely."""
     if not os.path.exists(file_path):
-        return None
+        return b""
 
     with wave.open(file_path, 'rb') as wav:
         params = wav.getparams()
         sr = wav.getframerate()
-
         start_frame = int(start_sec * sr)
         end_frame = int(end_sec * sr)
 
@@ -45,559 +38,330 @@ def slice_wav_bytes(file_path, start_sec, end_sec):
     with wave.open(buf, 'wb') as out:
         out.setparams(params)
         out.writeframes(frames)
-
     return buf.getvalue()
 
 
-# -----------------------------
-# HEADER & HIDDEN FIELDS MANAGEMENT
-# -----------------------------
-if "hidden_fields" not in st.session_state:
-    st.session_state.hidden_fields = set()
+def load_data() -> pd.DataFrame:
+    """Loads and merges target transcription and speaker metadata assets."""
+    ts_file = UPDATED_TRANSCRIPT_FILE if os.path.exists(UPDATED_TRANSCRIPT_FILE) else TRANSCRIPT_FILE
+    md_file = UPDATED_METADATA_FILE if os.path.exists(UPDATED_METADATA_FILE) else METADATA_FILE
 
-# def field_header(field_name, title):
-#     col1, col2 = st.columns([6, 1])
-
-#     # ALWAYS convert to a stable string key
-#     if isinstance(field_name, list):
-#         field_key = "__".join(field_name)
-#     else:
-#         field_key = str(field_name)
-
-#     with col1:
-#         st.markdown(f"##### {title}")
-
-#     with col2:
-#         if st.button("✖", key=f"hide_{field_key}", type="tertiary"):
-#             st.session_state.hidden_fields.add(field_key)
-#             st.rerun()
-def field_header(field_name, title, show_button=True):
-    col1, col2 = st.columns([6, 1])
-
-    # Convert to a stable string key
-    if isinstance(field_name, list):
-        field_key = "__".join(field_name)
-    else:
-        field_key = str(field_name)
-
-    with col1:
-        st.markdown(f"##### {title}")
-
-    with col2:
-        if show_button:
-            if st.button("✖", key=f"hide_{field_key}", type="tertiary"):
-                st.session_state.hidden_fields.add(field_key)
-                st.rerun()
-        else:
-            # Inject an empty placeholder space that shares the exact column 
-            # height rules as an active button row container.
-            st.html("<div style='height: 40px;'></div>")
-
-# -----------------------------
-# INTEGRATED DIRTY CHECK CALLBACK
-# -----------------------------
-def check_dirty_callback():
-    """
-    Evaluates changes instantaneously whenever a widget value changes,
-    comparing current state values safely against baseline row data.
-    """
-    idx = st.session_state.selected_idx
-    if idx is None or df is None:
-        return
-
-    row_data = df.iloc[idx]
-    
-    # Extract data securely from state or fallbacks
-    w_range = st.session_state.get(f"slider_{idx}", (float(row_data["start_sec"]), float(row_data["end_sec"])))
-    w_text = st.session_state.get(f"transc_{idx}", str(row_data["transcription"])).strip()
-    w_spk = st.session_state.get(f"spk_select_{idx}", str(row_data.get("speaker", ""))).strip()
-    w_type = st.session_state.get(f"type_select_{idx}", str(row_data.get("type", ""))).strip()
-    w_sex = st.session_state.get(f"sex_select_{idx}", str(row_data.get("sex", "")))
-    w_age = st.session_state.get(f"age_input_{idx}", int(row_data.get("age", 25)))
-    w_emo = st.session_state.get(f"emo_select_{idx}", str(row_data.get("emoCat", "Neutral")))
-    w_arousal = st.session_state.get(f"arousal_input_{idx}", float(row_data.get("arousal", 0.5)))
-    w_valence = st.session_state.get(f"valence_input_{idx}", float(row_data.get("valence", 0.5)))
-    w_dom = st.session_state.get(f"dom_input_{idx}", float(row_data.get("dominance", 0.5)))
-
-    is_dirty = (
-        (abs(w_range[0] - float(row_data["start_sec"])) > 0.01) or
-        (abs(w_range[1] - float(row_data["end_sec"])) > 0.01) or
-        (w_text != str(row_data["transcription"]).strip()) or
-        (w_spk != str(row_data.get("speaker", "")).strip()) or
-        (w_type != str(row_data.get("type", "")).strip()) or
-        ("sex" not in st.session_state.hidden_fields and w_sex != str(row_data.get("sex", ""))) or
-        ("age" not in st.session_state.hidden_fields and int(w_age) != (int(row_data["age"]) if pd.notna(row_data.get("age")) else 25)) or
-        ("emoCat" not in st.session_state.hidden_fields and w_emo != str(row_data.get("emoCat", "Neutral"))) or
-        ("emotional_state" not in st.session_state.hidden_fields and abs(w_arousal - float(row_data.get("arousal", 0.5))) > 0.01) or
-        ("emotional_state" not in st.session_state.hidden_fields and abs(w_valence - float(row_data.get("valence", 0.5))) > 0.01) or
-        ("emotional_state" not in st.session_state.hidden_fields and abs(w_dom - float(row_data.get("dominance", 0.5))) > 0.01)
-    )
-    st.session_state[f"dirty_{idx}"] = is_dirty
-
-
-# -----------------------------
-# LOAD DATA
-# -----------------------------
-def load_data():
-    transcription_file = (
-        UPDATED_TRANSCRIPT_FILE
-        if os.path.exists(UPDATED_TRANSCRIPT_FILE)
-        else TRANSCRIPT_FILE
-    )
-
-    metadata_file = (
-        UPDATED_METADATA_FILE
-        if os.path.exists(UPDATED_METADATA_FILE)
-        else METADATA_FILE
-    )
-
-    if not os.path.exists(transcription_file):
-        st.error(f"Missing transcription file: {transcription_file}")
+    if not all(os.path.exists(f) for f in [ts_file, md_file]):
+        st.error("Required source data files missing from filesystem boundaries.")
         return None
 
-    if not os.path.exists(metadata_file):
-        st.error(f"Missing metadata file: {metadata_file}")
-        return None
+    df_ts = pd.read_csv(ts_file, sep="\t")
+    df_md = pd.read_csv(md_file, sep="\t")
 
-    df_ts = pd.read_csv(transcription_file, sep="\t")
-    df_md = pd.read_csv(metadata_file, sep="\t")
+    st.session_state["tf_cols"] = list(df_ts.columns)
+    st.session_state["md_cols"] = list(df_md.columns)
 
-    # clean column names
-    # df_ts.columns = df_ts.columns.str.strip()
-    # df_md.columns = df_md.columns.str.strip()
-    TF_COLS=df_ts.columns.str.strip()
-    MD_COLS=df_md.columns.str.strip()
     if "seg_filename" not in df_ts.columns or "seg_filename" not in df_md.columns:
-        st.error("Missing 'seg_filename' column in one of the files")
+        st.error("Missing critical structural keys ('seg_filename') across files.")
         return None
-    # IMPORTANT: merge on filename
-    df = df_ts.merge(df_md, on=["seg_filename","speaker"], how="inner")
-    print(df)
-    return df
+
+    return df_ts.merge(df_md, on=["seg_filename", "speaker"], how="inner")
 
 
-def load_snapshot(row):
-    return {
-        "transcription": row["transcription"],
-        "speaker": row.get("speaker", ""),
-        "type": row.get("type", ""),
-        "sex": row.get("sex", ""),
-        "age": row.get("age", 25),
-        "emoCat": row.get("emoCat", "Neutral"),
-        "arousal": row.get("arousal", 0.5),
-        "valence": row.get("valence", 0.5),
-        "dominance": row.get("dominance", 0.5),
-    }
-
-
-def save_data(df):
-    if TF_COLS is None or MD_COLS is None:
-        st.error("Column schema not initialized")
-        return
-
-    # restore original column order safely
-    df_ts = df[TF_COLS].copy()
-    df_md = df[MD_COLS].copy()
-
-    # write file
-    df_ts.to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
-    df_md.to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
+def save_data(df: pd.DataFrame):
+    """Saves updated schemas back to user target destination footprints safely."""
+    tf_cols = st.session_state.get("tf_cols")
+    md_cols = st.session_state.get("md_cols")
+    
+    if tf_cols and md_cols:
+        df[tf_cols].to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
+        df[md_cols].to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
 
 # -----------------------------
-# SESSION INIT
+# CORE APP ENGINE STATE INITIALIZATION
 # -----------------------------
-if "df_segments" not in st.session_state:
-    st.session_state.df_segments = load_data()
-
-if "selected_idx" not in st.session_state:
-    st.session_state.selected_idx = None
-
-if "last_selected_idx" not in st.session_state:
-    st.session_state.last_selected_idx = None
-
-if "pending_idx" not in st.session_state:
-    st.session_state.pending_idx = None
-
-if "show_discard" not in st.session_state:
-    st.session_state.show_discard = False
-
-if "current_state" not in st.session_state:
-    st.session_state.current_state = None
+for key, default in [
+    ("df_segments", None), ("selected_idx", None), ("last_selected_idx", None),
+    ("pending_idx", None), ("show_discard", False), ("hidden_fields", set()),
+    ("initialized_fields", set())
+]:
+    if key not in st.session_state:
+        st.session_state[key] = load_data() if key == "df_segments" else default
 
 df = st.session_state.df_segments
 
+# -----------------------------
+# DATA ENGINE RESOLUTION HELPERS
+# -----------------------------
+def resolve_value(field: str, row_data: pd.Series, default=None):
+    """Unified fallback resolution pipeline for active component data blocks."""
+    if field not in st.session_state.get("md_cols", []):
+        return None
+    val = row_data.get(field, None)
+    return default if (val is None or pd.isna(val)) else val
+
+
+def build_optional_fields(md_cols: list) -> dict:
+    """Builds visibility lookup matrix maps using source file constraints."""
+    optional = {}
+    if "age" in md_cols: optional["age"] = ["age"]
+    if "emoCat" in md_cols: optional["emoCat"] = ["emoCat"]
+    
+    avd = [c for c in ["arousal", "valence", "dominance"] if c in md_cols]
+    if avd: optional["arousal__valence__dominance"] = avd
+    return optional
 
 # -----------------------------
-# SIDEBAR
+# COMPONENT BUILDERS (UI ELEMENTS)
 # -----------------------------
-st.sidebar.header("⏳ Audio Slices Queue")
+def field_header(field_name, title: str, show_button: bool = True):
+    """Renders contextual structural layouts with custom interactive close actions."""
+    col1, col2 = st.columns([6, 1])
+    field_key = "__".join(field_name) if isinstance(field_name, list) else str(field_name)
+    
+    col1.markdown(f"##### {title}")
+    if show_button:
+        # Fixed: Running safely as standard components outside a restrictive form block context
+        if col2.button("✖", key=f"hide_{field_key}", type="tertiary"):
+            st.session_state.hidden_fields.add(field_key)
+            st.rerun()
+    else:
+        col2.html("<div style='height: 40px;'></div>")
 
-def switch_segment(new_idx):
+
+def switch_segment(new_idx: int):
+    """Processes pipeline steps for index changes while verifying modification statuses."""
     current = st.session_state.selected_idx
     if current == new_idx:
         return
-    
-    dirty = st.session_state.get(f"dirty_{current}", False) if current is not None else False
-
-    if dirty:
+        
+    if st.session_state.get(f"dirty_{current}", False):
         st.session_state.pending_idx = new_idx
         st.session_state.show_discard = True
     else:
         st.session_state.selected_idx = new_idx
         st.session_state.hidden_fields = set()
-        st.session_state.current_state = None
+        st.session_state.initialized_fields = set()
         st.rerun()
 
-
+# -----------------------------
+# SIDEBAR NAVIGATION
+# -----------------------------
+st.sidebar.header("⏳ Audio Slices Queue")
 if df is not None:
     for idx, row in df.iterrows():
-        speaker = row.get("speaker", "??")
-        start = row.get("start_sec", 0.0)
-        end = row.get("end_sec", 0.0)
-        label = f"[{start:.2f}s - {end:.2f}s] {speaker}"
-
+        label = f"[{row.get('start_sec', 0.0):.2f}s - {row.get('end_sec', 0.0):.2f}s] {row.get('speaker', '??')}"
         if st.sidebar.button(label, key=f"seg_{idx}", use_container_width=True):
             switch_segment(idx)
 
-
 # -----------------------------
-# DISCARD POPUP DIALOG
+# DIALOGS (UNSAVED CHANGES POPUP)
 # -----------------------------
 if st.session_state.show_discard:
     @st.dialog("⚠️ Unsaved Changes")
-    def dialog():
-        st.write("You have unsaved changes. Do you want to discard them?")
+    def discard_dialog():
+        st.write("You have unsaved workspace adjustments in progress. Discard your modifications?")
         col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("Discard"):
-                old_idx = st.session_state.selected_idx
-                # Wipe temporary working memory configurations 
-                keys_to_clear = [
-                    f"slider_{old_idx}", f"transc_{old_idx}", f"spk_select_{old_idx}",
-                    f"type_select_{old_idx}", f"sex_select_{old_idx}", f"age_input_{old_idx}",
-                    f"emo_select_{old_idx}", f"arousal_input_{old_idx}", f"valence_input_{old_idx}",
-                    f"dom_input_{old_idx}"
-                ]
-                for key in keys_to_clear:
-                    if key in st.session_state:
-                        del st.session_state[key]
-
-                st.session_state[f"dirty_{old_idx}"] = False
-                st.session_state.selected_idx = st.session_state.pending_idx
-                st.session_state.show_discard = False
-                st.session_state.pending_idx = None
-                st.session_state.hidden_fields = set()
-                st.session_state.current_state = None
-                st.rerun()
-
-        with col2:
-            if st.button("Cancel"):
-                # Simply exit window without modifying or purging values in current_state
-                st.session_state.pending_idx = None
-                st.session_state.show_discard = False
-                st.rerun()
-
-    dialog()
+        
+        if col1.button("Discard Changes", use_container_width=True):
+            old_idx = st.session_state.selected_idx
+            st.session_state[f"dirty_{old_idx}"] = False
+            st.session_state.selected_idx = st.session_state.pending_idx
+            st.session_state.show_discard = False
+            st.session_state.pending_idx = None
+            st.session_state.hidden_fields.clear()
+            st.session_state.initialized_fields.clear()
+            st.rerun()
+            
+        if col2.button("Cancel", use_container_width=True):
+            st.session_state.show_discard = False
+            st.session_state.pending_idx = None
+            st.rerun()
+    discard_dialog()
     st.stop()
 
-
 # -----------------------------
-# MAIN VIEW
+# MAIN EDITOR WORKSPACE
 # -----------------------------
 if df is not None and st.session_state.selected_idx is not None:
     idx = st.session_state.selected_idx
     row_data = df.iloc[idx]
-    origin_rel_path = row_data["origin_filename"]
-
+    
     st.markdown(
-        f"<p style='padding-top: 32px; color: gray; margin: 0; font-size: 14px;'>"
-        f"📁 <b>Source:</b> <code>{origin_rel_path}</code> &nbsp;|&nbsp; "
-        f"💾 <b>Save:</b> <code>{row_data['seg_filename']}</code>"
-        f"</p>",
+        f"<p style='color: gray; font-size: 14px; margin-bottom: 20px;'>"
+        # f"📁 <b>Source File Footprint:</b> <code>{row_data['origin_filename']}</code> | "
+        f"💾 <b>Target:</b> <code>{row_data['seg_filename']}</code></p>", 
         unsafe_allow_html=True
     )
 
-    if not os.path.exists(origin_rel_path):
-        st.error("Audio file missing")
+    if not os.path.exists(str(row_data["origin_filename"])):
+        st.error("Audio media object file not found at the configured location.")
         st.stop()
 
-    with wave.open(origin_rel_path, "rb") as w:
+    with wave.open(str(row_data["origin_filename"]), "rb") as w:
         total_file_seconds = w.getnframes() / w.getframerate()
 
     st.write("---")
     st.markdown("### 🎚️ Drag & Cut Audio Boundaries")
 
-    slider_key = f"slider_{idx}"
-    dirty_key = f"dirty_{idx}"
+    # Range Slider Configuration Block
+    slider_key, dirty_key = f"slider_{idx}", f"dirty_{idx}"
     default_range = (float(row_data["start_sec"]), float(row_data["end_sec"]))
 
-    if slider_key not in st.session_state:
+    # reset hook (IMPORTANT: must happen BEFORE widget)
+    if st.session_state.get("_reset_slider"):
         st.session_state[slider_key] = default_range
+        st.session_state["_reset_slider"] = False
 
-    if dirty_key not in st.session_state:
-        st.session_state[dirty_key] = False
-
-    if st.session_state.last_selected_idx != idx:
+    if slider_key not in st.session_state or st.session_state.last_selected_idx != idx:
         st.session_state[slider_key] = default_range
         st.session_state[dirty_key] = False
         st.session_state.last_selected_idx = idx
-
-    def reset_slider():
-        st.session_state[slider_key] = default_range
-        st.session_state[dirty_key] = False
 
     col_slider, col_refresh = st.columns([5, 1])
 
     with col_slider:
         time_range = st.slider(
             "Isolate Audio Playback Area",
-            min_value=0.0,
-            max_value=float(total_file_seconds),
-            # value=st.session_state[slider_key],
+            0.0,
+            float(total_file_seconds),
             step=0.05,
             format="%.2f seconds",
-            key=slider_key,
-            on_change=check_dirty_callback
+            key=slider_key
         )
 
     with col_refresh:
-        st.write("")
-        st.button("🔄 Reset Value", on_click=reset_slider)
+        if st.button("🔄 Reset Trim", use_container_width=True):
+            st.session_state["_reset_slider"] = True
+            st.rerun()
 
-    selected_start, selected_end = time_range
-    audio = slice_wav_bytes(origin_rel_path, selected_start, selected_end)
-
-    if audio:
-        st.audio(audio, format="audio/wav")
-        st.caption(f"🎵 Playing an isolated audio chunk. Length: {(selected_end - selected_start):.2f}s")
+    # Audio Fragment Context Playback
+    audio_bytes = slice_wav_bytes(str(row_data["origin_filename"]), time_range[0], time_range[1])
+    if audio_bytes:
+        st.audio(audio_bytes, format="audio/wav")
+        st.caption(f"🎵 Active selection run: {(time_range[1] - time_range[0]):.2f} seconds total duration.")
 
     # -----------------------------
-    # FORM BLOCK CONTEXT ENGINE
+    # EDITOR WORKSPACE BLOCK
     # -----------------------------
-    edit_container = st.container(border=True)
+    md_cols = st.session_state.get("md_cols", [])
+    optional_matrix = build_optional_fields(md_cols)
+    
+    # Run structural automatic hider logic calculations
+    for hide_key, cols in optional_matrix.items():
+        if hide_key not in st.session_state.initialized_fields:
+            if all(row_data.get(c) is None or pd.isna(row_data.get(c)) for c in cols):
+                st.session_state.hidden_fields.add(hide_key)
+            st.session_state.initialized_fields.add(hide_key)
 
-    with edit_container:
-        with st.expander("📝 Edit Transcription Notes", expanded=True):          
-            if st.session_state.get("current_state") and st.session_state["current_state"].get('transcription') is not None:
-                current_text = str(st.session_state.current_state["transcription"])
-            else:
-                current_text = str(row_data["transcription"])
-                
-            new_text = st.text_area(
-                "Transcription text content:",
-                value=current_text,
-                key=f"transc_{idx}",
-                on_change=check_dirty_callback,
-                height=max(100, 50 * int(len(current_text) / 100))
-            )
-
-        with st.expander("Characteristics", expanded=True):
-            cols = st.columns(2)
-
-            with cols[0]:
-                st.markdown("##### 👥 Speaker Attribution")
-                existing_speakers = sorted(list(df["speaker"].dropna().unique()))
-                speaker_options = existing_speakers + ["➕ Add New Speaker..."]
-
-                if st.session_state.get("current_state") and st.session_state["current_state"].get('speaker') is not None:
-                    current_speaker = str(st.session_state.current_state["speaker"])
-                else:
-                    current_speaker = str(row_data.get("speaker", ""))
-                
-                default_spk_idx = existing_speakers.index(current_speaker) if current_speaker in existing_speakers else 0
-                final_speaker = st.selectbox(
-                    "Select Speaker identity:",
-                    speaker_options,
-                    index=default_spk_idx,
-                    key=f"spk_select_{idx}",
-                    on_change=check_dirty_callback
-                )
-
-            with cols[1]:
-                st.markdown("##### 🏷️ Interaction Type Classification")
-                existing_types = sorted(list(df["type"].dropna().unique()))
-                type_options = existing_types + ["➕ Add New Type..."]
-                
-                if st.session_state.get("current_state") and st.session_state["current_state"].get('type') is not None:
-                    current_type = str(st.session_state.current_state["type"])
-                else:
-                    current_type = str(row_data.get("type", ""))
-                    
-                default_type_idx = existing_types.index(current_type) if current_type in existing_types else 0
-                final_type = st.selectbox(
-                    "Select Interaction Type:",
-                    type_options,
-                    index=default_type_idx,
-                    key=f"type_select_{idx}",
-                    on_change=check_dirty_callback
-                )
-
-            cols = st.columns(2)
-
-            if "sex" not in st.session_state.hidden_fields:
-                with cols[0]:
-                    field_header("sex", "🧑 Sex", show_button=False)
-                    sex_options = ["Female", "Male", "Other"]
-                    if st.session_state.get("current_state") and st.session_state["current_state"].get('sex') is not None:
-                        current_sex = st.session_state.current_state["sex"]
-                    else:
-                        current_sex = str(row_data.get("sex", ""))
-                    default_sex_idx = sex_options.index(current_sex) if current_sex in sex_options else 0
-                    final_sex = st.selectbox(
-                        "Select Sex:",
-                        sex_options,
-                        index=default_sex_idx,
-                        key=f"sex_select_{idx}",
-                        on_change=check_dirty_callback
-                    )
-            else:
-                final_sex = np.nan 
-
-            if "age" not in st.session_state.hidden_fields:
-                with cols[1]:
-                    # st.markdown("##### ⏳Age")
-                    field_header("age", "⏳Age")
-                    if st.session_state.get("current_state") and st.session_state["current_state"].get('age') is not None:
-                        current_age = int(st.session_state.current_state["age"])
-                    else:
-                        current_age = int(row_data.get("age", 25))
-                    final_age = st.number_input(
-                        "Enter Age:",
-                        0, 120,
-                        value=current_age,
-                        key=f"age_input_{idx}",
-                        on_change=check_dirty_callback
-                    )
-            else:
-                final_age = np.nan 
-            
-            cols = st.columns(4)
-            current_emotion = (
-                st.session_state.current_state["emoCat"]
-                if st.session_state.get("current_state") and st.session_state["current_state"].get("emoCat") is not None
-                else row_data.get("emoCat", "Neutral")
-            )
-
-            if "emoCat" not in st.session_state.hidden_fields:
-                with cols[0]:
-                    field_header("emoCat", "🎭 Emotion")
-                    emotion_options = ['Anger','Contempt','Disgust','Fear','Happiness','Neutral','Sadness','Surprise','Other']
-                    default_emotion_idx = emotion_options.index(current_emotion) if current_emotion in emotion_options else 0
-                    final_emotion = st.selectbox(
-                        "Select Emotion:",
-                        options=emotion_options,
-                        index=default_emotion_idx,
-                        key=f"emo_select_{idx}",
-                        on_change=check_dirty_callback
-                    )
-            else:
-                final_emotion = current_emotion
-            
-            current_arousal = (
-                float(st.session_state.current_state["arousal"])
-                if st.session_state.get("current_state") and st.session_state["current_state"].get("arousal") is not None
-                else float(row_data.get("arousal", 0.5))
-            )
-            current_valence = (
-                float(st.session_state.current_state["valence"])
-                if st.session_state.get("current_state") and st.session_state["current_state"].get("valence") is not None
-                else float(row_data.get("valence", 0.5))
-            )
-            current_dominance = (
-                float(st.session_state.current_state["dominance"])
-                if st.session_state.get("current_state") and st.session_state["current_state"].get("dominance") is not None
-                else float(row_data.get("dominance", 0.5))
-            )
-            if "arousal__valence__dominance" not in st.session_state.hidden_fields:
-                with cols[1]:
-                    field_header(["arousal", "valence", "dominance"], "📈 Arousal", show_button=False)
-                    # st.markdown("##### 📈 Arousal")
-                    final_arousal = st.slider(
-                        "Arousal Level:", 0.0, 1.0,
-                        value=current_arousal,
-                        key=f"arousal_input_{idx}",
-                        on_change=check_dirty_callback
-                    )
-                with cols[2]:
-                    field_header(["arousal", "valence", "dominance"], "📉 Valence", show_button=False)
-                    # st.markdown("##### 📉 Valence")
-                    final_valence = st.slider(
-                        "Valence Level:", 0.0, 1.0,
-                        value=float(current_valence),
-                        key=f"valence_input_{idx}",
-                        on_change=check_dirty_callback
-                    )
-                with cols[3]:
-                    field_header(["arousal", "valence", "dominance"], "Dominance")
-                    final_dominance = st.slider(
-                        "Dominance Level:", 0.0, 1.0,
-                        value=float(current_dominance),
-                        key=f"dom_input_{idx}",
-                        on_change=check_dirty_callback
-                    )
-            else:
-                final_arousal = current_arousal 
-                final_valence = current_valence
-                final_dominance = current_dominance
-
-        # Update running in-memory object safely
-        st.session_state.current_state = {
-            "transcription": new_text,
-            "speaker": final_speaker,
-            "type": final_type,
-            "sex": final_sex,
-            "age": final_age,
-            "emoCat": final_emotion,
-            "arousal": final_arousal,
-            "valence": final_valence,
-            "dominance": final_dominance,
-        }
+    # Replaced st.form with an st.container to fully support the nested header hide buttons
+    with st.container(border=True):
+        st.markdown("### 📝 Edit Metadata Attributes")
         
-        origin_state = load_snapshot(row_data)
-        st.session_state[dirty_key] = ((origin_state != st.session_state.current_state) or (time_range != default_range))
+        new_text = st.text_area(
+            "Transcription text content:", 
+            value=str(row_data["transcription"]), 
+            key=f"text_input_{idx}",
+            height=120
+        )
+        
+        c_att = st.columns(2)
+        with c_att[0]:
+            st.markdown("##### 👥 Speaker Attribution")
+            speakers = sorted(list(df["speaker"].dropna().unique()))
+            new_speaker = st.selectbox(
+                "Select Identity:", speakers + ["➕ Add New Speaker..."],
+                key=f"speaker_input_{idx}",
+                index=speakers.index(str(row_data.get("speaker"))) if str(row_data.get("speaker")) in speakers else 0
+            )
+        with c_att[1]:
+            st.markdown("##### 🏷️ Interaction Type")
+            types = sorted(list(df["type"].dropna().unique()))
+            new_type = st.selectbox(
+                "Select Interaction Type Classification:", types + ["➕ Add New Type..."],
+                key=f"type_input_{idx}",
+                index=types.index(str(row_data.get("type"))) if str(row_data.get("type")) in types else 0
+            )
 
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Hidden Fields")
+        c_dem = st.columns(2)
+        new_sex = np.nan
+        if "sex" not in st.session_state.hidden_fields:
+            with c_dem[0]:
+                field_header("sex", "🧑 Sex Identification", show_button=False)
+                sex_opts = ["Female", "Male", "Other"]
+                new_sex = st.selectbox("Select Gender Designation:", sex_opts, key=f"sex_input_{idx}", index=sex_opts.index(str(row_data.get("sex", "Female"))) if str(row_data.get("sex")) in sex_opts else 0)
 
-        for field in sorted(st.session_state.hidden_fields):
-            if st.sidebar.button(f"Restore {field}", key=f"restore_{field}"):
-                st.session_state.hidden_fields.remove(field)
-                if st.session_state.current_state and field in st.session_state.current_state:
-                    st.session_state.current_state[field] = None
-                st.session_state[dirty_key] = False
-                st.rerun()
+        new_age = np.nan
+        if "age" in md_cols and "age" not in st.session_state.hidden_fields:
+            with c_dem[1]:
+                field_header("age", "⏳ Evaluated Age Component")
+                new_age = st.number_input("Enter Numeric Value:", 0, 120, key=f"age_input_{idx}", value=int(resolve_value("age", row_data, 25)))
 
-        # -----------------------------
-        # SAVE ACTION
-        # -----------------------------
-        if st.button("💾 Save", key=f"save_{idx}"):
-            df.at[idx, "start_sec"] = round(selected_start, 2)
-            df.at[idx, "end_sec"] = round(selected_end, 2)
-            df.at[idx, "transcription"] = new_text
-            df.at[idx, "speaker"] = final_speaker
-            df.at[idx, "type"] = final_type
-            if "sex" not in st.session_state.hidden_fields:
-                df.at[idx, "sex"] = final_sex
-            if "age" not in st.session_state.hidden_fields:
-                df.at[idx, "age"] = final_age
-            if "emoCat" not in st.session_state.hidden_fields:
-                df.at[idx, "emoCat"] = final_emotion
-            if "arousal__valence__dominance" not in st.session_state.hidden_fields:
-                df.at[idx, "arousal"] = round(final_arousal, 2)
-                df.at[idx, "valence"] = round(final_valence, 2)
-                df.at[idx, "dominance"] = round(final_dominance, 2)
+        c_emo = st.columns(4)
+        new_emotion = np.nan
+        if "emoCat" not in st.session_state.hidden_fields:
+            with c_emo[0]:
+                field_header("emoCat", "🎭 Emotion Category")
+                emo_opts = ["Anger", "Contempt", "Disgust", "Fear", "Happiness", "Neutral", "Sadness", "Surprise", "Other"]
+                new_emotion = st.selectbox("Categorization Strategy:", emo_opts, key=f"emo_input_{idx}", index=emo_opts.index(str(row_data.get("emoCat", "Neutral"))) if str(row_data.get("emoCat")) in emo_opts else 5)
 
-            try:
-                save_data(df)
-            except Exception as e:
-                st.error(f"Save failed: {e}")
-                st.stop()
-                
+        new_arousal, new_valence, new_dominance = np.nan, np.nan, np.nan
+        if any(x in md_cols for x in ["arousal", "valence", "dominance"]) and "arousal__valence__dominance" not in st.session_state.hidden_fields:
+            with c_emo[1]:
+                field_header(["arousal", "valence", "dominance"], "📈 Arousal", show_button=False)
+                new_arousal = st.slider("Arousal Scaling", 0.0, 1.0, float(resolve_value("arousal", row_data, 0.5)), key=f"arousal_input_{idx}")
+            with c_emo[2]:
+                field_header(["arousal", "valence", "dominance"], "📉 Valence", show_button=False)
+                new_valence = st.slider("Valence Scaling", 0.0, 1.0, float(resolve_value("valence", row_data, 0.5)), key=f"valence_input_{idx}")
+            with c_emo[3]:
+                field_header(["arousal", "valence", "dominance"], "👑 Dominance")
+                new_dominance = st.slider("Dominance Scaling", 0.0, 1.0, float(resolve_value("dominance", row_data, 0.5)), key=f"dom_input_{idx}")
+
+        st.write("")
+        submit_save = st.button("💾 Save", key=f"save_btn_{idx}", use_container_width=True)
+
+    # Evaluate dirty flag state via deterministic checking logic
+    is_changed = (
+        (abs(time_range[0] - float(row_data["start_sec"])) > 0.01) or
+        (abs(time_range[1] - float(row_data["end_sec"])) > 0.01) or
+        (new_text != str(row_data["transcription"]).strip()) or
+        (new_speaker != str(row_data.get("speaker", ""))) or
+        (new_type != str(row_data.get("type", "")))
+    )
+    st.session_state[dirty_key] = is_changed
+
+    if submit_save:
+        df.at[idx, "start_sec"] = round(time_range[0], 2)
+        df.at[idx, "end_sec"] = round(time_range[1], 2)
+        df.at[idx, "transcription"] = new_text
+        df.at[idx, "speaker"] = new_speaker
+        df.at[idx, "type"] = new_type
+        df.at[idx, "sex"] = new_sex if "sex" not in st.session_state.hidden_fields else np.nan
+        df.at[idx, "age"] = new_age if "age" not in st.session_state.hidden_fields else np.nan
+        df.at[idx, "emoCat"] = new_emotion if "emoCat" not in st.session_state.hidden_fields else np.nan
+        
+        if "arousal__valence__dominance" not in st.session_state.hidden_fields:
+            df.at[idx, "arousal"] = round(new_arousal, 2)
+            df.at[idx, "valence"] = round(new_valence, 2)
+            df.at[idx, "dominance"] = round(new_dominance, 2)
+        else:
+            for field in ["arousal", "valence", "dominance"]:
+                df.at[idx, field] = np.nan
+
+        try:
+            save_data(df)
             st.session_state[dirty_key] = False
             st.session_state.df_segments = load_data()
-            st.success("Saved!")
-            time.sleep(1)
+            st.success("Successfully committed workspace changes!")
+            time.sleep(0.5)
             st.rerun()
+        except Exception as e:
+            st.error(f"Write operation failure encountered: {e}")
+
+    # -----------------------------
+    # SIDEBAR: RESTORE FIELDS UTILITY
+    # -----------------------------
+    if st.session_state.hidden_fields:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Hidden Interface Blocks")
+        for field in sorted(list(st.session_state.hidden_fields)):
+            if st.sidebar.button(f"↩️ Restore {field.split('__')[0]}", key=f"restore_{field}"):
+                st.session_state.hidden_fields.remove(field)
+                st.rerun()
 else:
-    st.info("👈 Please select a segment from the sidebar")
+    st.info("👈 Please select an audio segment tracking slice from the sidebar queue to start.")
