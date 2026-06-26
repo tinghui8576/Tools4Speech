@@ -757,6 +757,7 @@ def main() -> None:
                 if audio_file is not None:
                     try:
                         _tmp_path = _save_upload(audio_file, prefix=f"tmp_{i}_")
+                        print(_tmp_path)
                         _tmp_audio, _tmp_sr = load_audio(_tmp_path)
                         _tmp_stats = analyse_audio(_tmp_audio, _tmp_sr)
                         _tmp_duration_sec = _tmp_stats.get("duration_sec", 0)

@@ -373,11 +373,12 @@ def process_conversation(
     _dual_mode = (
         preprocess_config_mild is not None or preprocess_config_strong is not None
     )
-
+    
     if _dual_mode:
         # Dual preprocessing: mild version for VAD, strong version for ASR.
         # Default mild to vad profile (HPF only); default strong to noisy profile.
         _orig = speakers_audio
+        
         if preprocess_config_mild is None:
             preprocess_config_mild = PreprocessConfig(
                 **{**_PROFILES.get("vad", {}), "output_suffix": "_mild"}
@@ -667,7 +668,7 @@ def process_conversation(
                 results = transcribe_segments(
                     model=model,
                     segments=speaker_segments.reset_index(drop=True),
-                    audio_path=audio_path,
+                    audio_path=_orig[speaker],
                     output_dir=speaker_dirs[speaker],
                     speaker=speaker,
                     cache=persist_transcription_artifacts,
@@ -874,6 +875,7 @@ def process_conversation(
         "raw_transcriptions": raw_transcriptions_path,
         "classified": classified_path,
         "final_labels": final_labels_path,
+        "metadata_labels": raw_agesex_path,
         "elan_export": elan_export_path,
         "turns_df": turns_df,
         "classified_df": df_class,
