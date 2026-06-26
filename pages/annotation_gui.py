@@ -13,22 +13,6 @@ TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/final_labels.txt"
 UPDATED_TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_labels.txt"
 METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/raw_agesex.txt"
 UPDATED_METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_meta.txt"
-print(st.session_state.get("result"))
-PIPELINE_FIELDS = [
-    "audio_path",
-    "filename", 
-    "start_sec",
-    "end_sec",
-    "transcription",
-    "speaker",
-    "type",
-    "sex",
-    "age",
-    "emoCat",
-    "arousal",
-    "valence",
-    "dominance",
-]
 
 REQUIRED_FIELDS = [
     "audio_filename",
@@ -36,13 +20,8 @@ REQUIRED_FIELDS = [
     "start_sec",
     "end_sec",
 ]
-st.session_state["tf_cols"] = []
-st.session_state["md_cols"] = []
 
-def write_back(df, idx, sample, mapping):
-    for field, col in mapping.items():
-        if col != "(none)" and field in sample:
-            df.at[idx, col] = sample[field]
+
 # -----------------------------
 # FILE & AUDIO UTILITIES
 # -----------------------------
@@ -92,8 +71,9 @@ def save_data(df: pd.DataFrame):
     tf_cols = st.session_state.get("tf_cols")
     md_cols = st.session_state.get("md_cols")
     df_to_save = df.rename(columns=st.session_state["reverse_mapping"])
-    if tf_cols and md_cols:
+    if tf_cols:
         df_to_save[tf_cols].to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
+    if md_cols:
         df_to_save[md_cols].to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
 
 # -----------------------------
@@ -151,8 +131,11 @@ def _changed_float(field, current, original, tol=0.01):
 def _hidden_changed():
     return st.session_state.get("init_hidden_fields", set()) != st.session_state.get("hidden_fields", set())
 
-def _csv_column(field):
-    return st.session_state["col_mapping"].get(field, "(none)")
+def _csv_columns(fields):
+    return {
+        f: st.session_state["col_mapping"].get(f, "(none)")
+        for f in fields
+    }
 
 def check_dirty_callback():
     """
@@ -309,13 +292,7 @@ def run_upload():
             options=options,
             index=options.index(guess(field, all_cols))
         )
-
-    st.session_state["col_mapping"] = mapping
-    st.session_state["reverse_mapping"] = {
-        v: k
-        for k, v in mapping.items()
-        if v != "(none)"
-    }   
+    
     missing = [
         f for f in REQUIRED_FIELDS
         if mapping[f] == "(none)"
@@ -345,17 +322,20 @@ def run_upload():
         for pipeline_field, csv_column in mapping.items():
             if csv_column != "(none)":
                 rename_dict[csv_column] = pipeline_field
-
+        st.session_state["col_mapping"] = rename_dict 
+        st.session_state["reverse_mapping"] = {
+            v: k
+            for k, v in rename_dict.items()
+            if v != "(none)"
+        }   
         df = df.rename(columns=rename_dict)
         st.session_state["df_segments"] = df
-        print(df)
 
         st.success("Merged successfully!")
         st.rerun()
 def run_annotation():
     
     df = st.session_state.df_segments
-    print(df)
         # -----------------------------
     # SIDEBAR NAVIGATION
     # -----------------------------
@@ -401,7 +381,6 @@ def run_annotation():
     if df is not None and st.session_state.selected_idx is not None:
         idx = st.session_state.selected_idx
         row_data = df.iloc[idx]
-        
         st.markdown(
             f"<p style='color: gray; font-size: 14px; margin-bottom: 20px;'>"
             # f"📁 <b>Source File Footprint:</b> <code>{row_data['audio_filename']}</code> | "
@@ -462,7 +441,8 @@ def run_annotation():
         # -----------------------------
         # EDITOR WORKSPACE BLOCK
         # -----------------------------
-        md_cols = st.session_state.get("md_cols", [])
+        md_cols = _csv_columns(st.session_state.get("md_cols", []))
+        
         optional_matrix = build_optional_fields(md_cols)
         
         # Run structural automatic hider logic calculations
@@ -617,7 +597,7 @@ def run_annotation():
             try:
                 save_data(df)
                 st.session_state[dirty_key] = False
-                st.session_state.df_segments = load_data()
+                st.session_state.df_segments = df
                 st.success("Successfully committed workspace changes!")
                 time.sleep(0.5)
                 st.rerun()
@@ -660,7 +640,7 @@ st.set_page_config(page_title="Visual Timeline Audio Trimmer", initial_sidebar_s
 st.title("✂️ Visual Audio Range Trimmer & Editor")
 defaults = {
     "selected_idx": None, "last_selected_idx": None, "pending_idx": None, "show_discard": False, "current_state": {},
-    "hidden_fields": set(), "initialized_fields": set(), "init_hidden_fields": set(), "df_segments": None}
+    "hidden_fields": set(), "initialized_fields": set(), "init_hidden_fields": set(), "df_segments": None, "tf_cols": [], "md_cols": []}
 for key, default in defaults.items():
     st.session_state.setdefault(key, default)
 if st.session_state["df_segments"] is None:
