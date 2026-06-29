@@ -9,10 +9,6 @@ import numpy as np
 # -----------------------------
 # CONFIG & PATH CONSTANTS
 # -----------------------------
-TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/final_labels.txt"
-UPDATED_TRANSCRIPT_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_labels.txt"
-METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/raw_agesex.txt"
-UPDATED_METADATA_FILE = "outputs/vad/F1F2_quiet_food_1m_01_ch/updated_meta.txt"
 
 REQUIRED_FIELDS = [
     "audio_filename",
@@ -21,7 +17,21 @@ REQUIRED_FIELDS = [
     "end_sec",
 ]
 
-
+PIPELINE_FIELDS = [
+    "audio_filename",
+    "transcription",
+    "filename",
+    'start_sec',
+    'end_sec',
+    "speaker",
+    "type",
+    "sex",
+    "age",
+    "emoCat",
+    "arousal",
+    "valence",
+    "dominance",
+]
 # -----------------------------
 # FILE & AUDIO UTILITIES
 # -----------------------------
@@ -45,17 +55,58 @@ def slice_wav_bytes(file_path: str, start_sec: float, end_sec: float) -> bytes:
         out.writeframes(frames)
     return buf.getvalue()
 
+def apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
+    rename_dict = st.session_state.get("col_mapping", {})
+    return df.rename(columns=rename_dict)
+
+# update_output: dict = st.session.get('update_output', "")
+#     if "update_output_dir" not in update_output:
+#         if "output_dir_input" not in st.session_state:
+#             st.session_state["update_output_dir"] = "outputs"
+#         else:
+#             st.session_state["update_output_dir"] = st.session_state.get("output_dir_input")
+
+#     output_dir = st.text_input("Output directory", key="update_output_dir")
+
+
+def _next_available_name(output_dir, prefix):
+    path = os.path.join(output_dir, f"{prefix}.txt")
+
+    i = 1
+    while os.path.exists(path):
+        path = os.path.join(output_dir, f"{prefix}_{i}.txt")
+        i += 1
+    return path
+
 def load_data() -> pd.DataFrame:
     """Loads and merges target transcription and speaker metadata assets."""
-    ts_file = UPDATED_TRANSCRIPT_FILE if os.path.exists(UPDATED_TRANSCRIPT_FILE) else TRANSCRIPT_FILE
-    md_file = UPDATED_METADATA_FILE if os.path.exists(UPDATED_METADATA_FILE) else METADATA_FILE
+    
+    result: dict = st.session_state.result or {}
+    output_dir_result: str = result.get("output_dir", "")
+    \
+    # if not all(os.path.exists(f) for f in [TRANSCRIPT_FILE, METADATA_FILE]):
+    #     st.error("Required source data files missing.")
+    #     return None
 
-    if not all(os.path.exists(f) for f in [ts_file, md_file]):
+    files = st.session_state.get("files", {})
+    st.session_state["update_output_dir"] = output_dir_result
+
+    files["transcript_file"] = result["final_labels"]
+    files["meta_file"] = result["metadata_labels"]
+    files["update_transcript"] = _next_available_name(
+        st.session_state["update_output_dir"],
+        "update_transcript"
+    )
+    files["update_meta"] = _next_available_name(
+        st.session_state["update_output_dir"],
+        "update_meta"
+    )
+    if not all(os.path.exists(f) for f in [files["transcript_file"], files["meta_file"]]):
         st.error("Required source data files missing from filesystem boundaries.")
         return None
 
-    df_ts = pd.read_csv(ts_file, sep="\t")
-    df_md = pd.read_csv(md_file, sep="\t")
+    df_ts = pd.read_csv(files["transcript_file"], sep="\t")
+    df_md = pd.read_csv(files["meta_file"], sep="\t")
 
     st.session_state["tf_cols"] = list(df_ts.columns)
     st.session_state["md_cols"] = list(df_md.columns)
@@ -64,17 +115,29 @@ def load_data() -> pd.DataFrame:
         st.error("Missing critical structural keys ('seg_filename') across files.")
         return None
 
-    return df_ts.merge(df_md, on=["seg_filename", "speaker"], how="inner")
+    df = df_ts.merge(df_md, on=["seg_filename", "speaker"], how="inner")
+
+    df = normalize_schema(df)
+    return df
 
 def save_data(df: pd.DataFrame):
     """Saves updated schemas back to user target destination footprints safely."""
     tf_cols = st.session_state.get("tf_cols")
     md_cols = st.session_state.get("md_cols")
-    df_to_save = df.rename(columns=st.session_state["reverse_mapping"])
+
+    reversed_mapping = st.session_state.get("reverse_mapping")
+    if reversed_mapping:
+        df = df.rename(columns=reversed_mapping)
+    
+    files: dict = st.session_state.get("files", {})
+    
+    UPDATED_TRANSCRIPT_FILE: str = files.get("update_transcript", "")
+    UPDATED_METADATA_FILE: str = files.get("update_meta", "")
+    print(UPDATED_METADATA_FILE, UPDATED_TRANSCRIPT_FILE)
     if tf_cols:
-        df_to_save[tf_cols].to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
+        df[tf_cols].to_csv(UPDATED_TRANSCRIPT_FILE, sep="\t", index=False)
     if md_cols:
-        df_to_save[md_cols].to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
+        df[md_cols].to_csv(UPDATED_METADATA_FILE, sep="\t", index=False)
 
 # -----------------------------
 # DATA ENGINE RESOLUTION HELPERS
@@ -89,24 +152,26 @@ def _resolve_value(field, row_data, default=None):
         return default
 
     return value
+def normalize_schema(df: pd.DataFrame):
+    mapping = st.session_state.get("col_mapping", {})
 
-# def _resolve_value(field: str, row_data: pd.Series, default=None): 
-#     """Unified fallback resolution pipeline for active component data blocks.""" 
-#     if field not in st.session_state.get("md_cols", []) and field not in st.session_state.get("tf_cols", []): 
-#         return None 
-#     if st.session_state.get("current_state", {}).get(field) is not None: 
-#         return st.session_state.current_state[field] 
-    
-#     val = row_data.get(field, None) 
+    # if mapping exists → rename
+    if mapping:
+        df = df.rename(columns=mapping)
 
-#     return default if (val is None or pd.isna(val)) else val
+    # ensure all expected columns exist
+    for col in PIPELINE_FIELDS:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    return df
 
 def build_optional_fields(md_cols: list) -> dict:
     """Builds visibility lookup matrix maps using source file constraints."""
     optional = {}
     if "age" in md_cols: optional["age"] = ["age"]
     if "emoCat" in md_cols: optional["emoCat"] = ["emoCat"]
-    
+    if "sex" in md_cols: optional["sex"] = ["sex"]
     avd = [c for c in ["arousal", "valence", "dominance"] if c in md_cols]
     if avd: optional["arousal__valence__dominance"] = avd
     return optional
@@ -132,8 +197,9 @@ def _hidden_changed():
     return st.session_state.get("init_hidden_fields", set()) != st.session_state.get("hidden_fields", set())
 
 def _csv_columns(fields):
+    mapping = st.session_state.get("col_mapping", {})
     return {
-        f: st.session_state["col_mapping"].get(f, "(none)")
+        f: mapping.get(f, "(none)")
         for f in fields
     }
 
@@ -152,20 +218,20 @@ def check_dirty_callback():
     w_text = st.session_state.get(f"transc_{idx}", str(row_data["transcription"])).strip()
     w_spk = st.session_state.get(f"spk_select_{idx}", str(row_data.get("speaker", ""))).strip()
     w_type = st.session_state.get(f"type_select_{idx}", str(row_data.get("type", ""))).strip()
-    w_sex = st.session_state.get(f"sex_select_{idx}", str(row_data.get("sex", "")))
+    w_sex = st.session_state.get(f"sex_select_{idx}", _resolve_value("sex",row_data, ""))
     w_age = st.session_state.get(f"age_input_{idx}",_resolve_value("age",row_data, 25))
     w_emo = st.session_state.get(f"emo_select_{idx}",_resolve_value("emoCat",row_data, "Neutral"))
     w_arousal = st.session_state.get(f"arousal_input_{idx}", _resolve_value("arousal", row_data, 0.5))
     w_valence = st.session_state.get(f"valence_input_{idx}",_resolve_value("valence", row_data, 0.5))
     w_dom = st.session_state.get(f"dom_input_{idx}",_resolve_value("dominance", row_data, 0.5))
-    
+    print(w_sex)
     is_dirty = (
         abs(w_range[0] - float(row_data["start_sec"])) > 0.01
         or abs(w_range[1] - float(row_data["end_sec"])) > 0.01
         or w_text != str(row_data["transcription"]).strip()
         or w_spk != str(row_data.get("speaker", "")).strip()
         or w_type != str(row_data.get("type", "")).strip()
-        or _changed("sex", w_sex, str(row_data.get("sex", "")))
+        or _changed("sex", w_sex,  str(_resolve_value("sex",row_data, "")))
         or _changed("age", int(w_age), int(_resolve_value("age", row_data, 25)))
         or _changed("emoCat", str(w_emo), str(_resolve_value("emoCat", row_data, "Neutral")))
         or _changed_float("arousal", w_arousal, _resolve_value("arousal", row_data, 0.5))
@@ -237,28 +303,25 @@ def run_upload():
         if md_file:
             df_md = pd.read_csv(md_file, sep="\t")
             st.session_state["md_cols"] = list(df_md.columns)
+    update_output: dict = st.session_state.get('update_output', "")
+    if "update_output_dir" not in update_output:
+        if "output_dir_input" not in st.session_state:
+            st.session_state["update_output_dir"] = "outputs"
+        else:
+            st.session_state["update_output_dir"] = st.session_state.get("output_dir_input")
+
+    output_dir = st.text_input("Output directory", key="update_output_dir")
+
+    print(md_file)
+    print(output_dir)
     all_cols = sorted(set(st.session_state["tf_cols"] + st.session_state["md_cols"]))
-  
+    
     if not all_cols:
         st.info("Upload at least one file to configure mapping")
         return
     st.subheader("Column Mapping")
 
-    PIPELINE_FIELDS = [
-        "audio_filename",
-        "transcription",
-        "filename",
-        'start_sec',
-        'end_sec',
-        "speaker",
-        "type",
-        "sex",
-        "age",
-        "emoCat",
-        "arousal",
-        "valence",
-        "dominance",
-    ]
+    
 
     def guess(field, cols):
         suggestions = {
@@ -328,10 +391,24 @@ def run_upload():
             for k, v in rename_dict.items()
             if v != "(none)"
         }   
-        df = df.rename(columns=rename_dict)
+        df = normalize_schema(df)
         st.session_state["df_segments"] = df
 
         st.success("Merged successfully!")
+        os.makedirs(output_dir, exist_ok=True)
+        files: dict = st.session_state.get("files", {})
+
+        files["update_transcript"] = _next_available_name(
+            st.session_state["update_output_dir"],
+            "update_transcript"
+        )
+        files["update_meta"] = _next_available_name(
+            st.session_state["update_output_dir"],
+            "update_meta"
+        )
+        
+        # _query_update()
+        # UPDATED_TRANSCRIPT_FILE, UPDATED_METADATA_FILE = os.path.join(output_dir, "updated_transcriptions.txt"), os.path.join(output_dir, "updated_transcriptions.txt")
         st.rerun()
 def run_annotation():
     
@@ -441,7 +518,7 @@ def run_annotation():
         # -----------------------------
         # EDITOR WORKSPACE BLOCK
         # -----------------------------
-        md_cols = _csv_columns(st.session_state.get("md_cols", []))
+        md_cols = st.session_state.get("md_cols", [])
         
         optional_matrix = build_optional_fields(md_cols)
         
@@ -509,10 +586,11 @@ def run_annotation():
                         default_sex_idx = sex_options.index(current_sex) if current_sex in sex_options else 0
                         final_sex = st.selectbox(
                             "Select Sex:",
-                            sex_options,
+                            options=sex_options,
                             index=default_sex_idx,
                             key=f"sex_select_{idx}",
                             on_change=check_dirty_callback)
+                        print(final_sex)
                         # sex_opts = ["Female", "Male", "Other"]
                         # new_sex = st.selectbox("Select Gender Designation:", sex_opts, key=f"sex_input_{idx}", index=sex_opts.index(str(row_data.get("sex", "Female"))) if str(row_data.get("sex")) in sex_opts else 0)
                 else:
@@ -639,7 +717,7 @@ def run_annotation():
 st.set_page_config(page_title="Visual Timeline Audio Trimmer", initial_sidebar_state="expanded", layout="wide")
 st.title("✂️ Visual Audio Range Trimmer & Editor")
 defaults = {
-    "selected_idx": None, "last_selected_idx": None, "pending_idx": None, "show_discard": False, "current_state": {},
+    "selected_idx": None, "last_selected_idx": None, "pending_idx": None, "show_discard": False, "current_state": {}, "files": {},
     "hidden_fields": set(), "initialized_fields": set(), "init_hidden_fields": set(), "df_segments": None, "tf_cols": [], "md_cols": []}
 for key, default in defaults.items():
     st.session_state.setdefault(key, default)
@@ -652,6 +730,3 @@ if st.session_state["df_segments"] is None:
 
 run_annotation()
 
-    
-    # st.write("Choose a folder that contain transcption and metadata")
-    
