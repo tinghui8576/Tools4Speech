@@ -5,7 +5,7 @@ import time
 import pandas as pd
 import streamlit as st
 import numpy as np
-from page.setup import normalize_schema, _next_available_name
+from page.setup import merge_datasets, normalize_schema, _next_available_name
 
 # -----------------------------
 # FILE & AUDIO UTILITIES
@@ -31,7 +31,7 @@ def slice_wav_bytes(file_path: str, start_sec: float, end_sec: float) -> bytes:
     return buf.getvalue()
 
 def apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
-    rename_dict = st.session_state.get("col_mapping", {})
+    rename_dict = st.session_state["project"].get("mapping", {})
     return df.rename(columns=rename_dict)
 def load_data() -> pd.DataFrame:
     """Loads previously processed transcript and metadata into the project."""
@@ -64,84 +64,72 @@ def load_data() -> pd.DataFrame:
 
     df_ts = pd.read_csv(files["transcript_file"], sep="\t")
     df_md = pd.read_csv(files["meta_file"], sep="\t")
-
-    project["tf_cols"] = list(df_ts.columns)
-    project["md_cols"] = list(df_md.columns)
-
-    df_ts = normalize_schema(df_ts, None)
-    df_md = normalize_schema(df_md, None)
-    if "filename" not in df_ts.columns or "filename" not in df_md.columns:
-        st.error("Missing 'filename' column.")
+    project["tf_cols"] = list(df_ts.columns) if df_ts is not None else []
+    project["md_cols"] = list(df_md.columns) if df_md is not None else []
+    if "seg_filename" not in df_ts.columns or "seg_filename" not in df_md.columns:
+        st.error("Missing 'seg_filename' column.")
         return None
-
-    df = df_ts.merge(df_md, on=["filename", "speaker"], how="inner")
     
-
+    df_ts = normalize_schema(df_ts)
+    df_md = normalize_schema(df_md)
+    df = merge_datasets(df_ts, df_md)
     project["df"] = df
     project["mode"] = "annotation"
-    # Reset editor state
-    st.session_state["editor"] = {
-        "selected_idx": None,
-        "dirty": False,
-        "hidden_fields": set(),
-        "init_hidden_fields": set(),
-        "initialized_fields": set(),
-        "current_state": {},
-        "pending_idx": None,
-        "show_discard": False,
-    }
-
-    return df
+    
 def save_data(df: pd.DataFrame):
-    """Saves updated schemas back to user target destination footprints safely."""
     project = st.session_state.get("project", {})
     editor = st.session_state.get("editor", {})
 
-    tf_cols = project.get("tf_cols")
-    md_cols = project.get("md_cols")
+    mapping = project.get("mapping", {})
+    tf_mapping = mapping.get("tf", {})
+    md_mapping = mapping.get("md", {})
 
-    files: dict = project.get("files", {})
-    reverse_mapping = project.get("reverse_mapping")
+    tf_cols = project.get("tf_cols", [])
+    md_cols = project.get("md_cols", [])
 
-    # -----------------------------
-    # APPLY REVERSE MAPPING (UI → RAW schema)
-    # -----------------------------
-    if reverse_mapping:
-        df = df.rename(columns=reverse_mapping)
-
-    # -----------------------------
-    # OUTPUT PATHS
-    # -----------------------------
+    files = project.get("files", {})
     transcript_path = files.get("update_transcript")
     metadata_path = files.get("update_meta")
 
     if not transcript_path or not metadata_path:
-        raise ValueError("Missing output file paths in project['files']")
-    
-    # -----------------------------
-    # WRITE TRANSCRIPT FILE
-    # -----------------------------
-    if tf_cols:
-        if not transcript_path:
-            raise ValueError("Missing output file paths in project['files']")
-        tf_cols = [c for c in tf_cols if c in df.columns]
-        df[tf_cols].to_csv(transcript_path, sep="\t", index=False)
-    
-    # -----------------------------
-    # WRITE METADATA FILE
-    # -----------------------------
-    if md_cols:
-        if not metadata_path:
-            raise ValueError("Missing output file paths in project['files']")
-        md_cols = [c for c in md_cols if c in df.columns]
-        df[md_cols].to_csv(metadata_path, sep="\t", index=False)
+        raise ValueError("Missing output file paths")
 
-    # -----------------------------
-    # RESET DIRTY STATE AFTER SAVE
-    # -----------------------------
+    # -------------------------
+    # TRANSCRIPT EXPORT
+    # -------------------------
+    df_tf = df.copy()
+
+    if tf_mapping:
+        df_tf = df_tf.rename(columns={v: k for k, v in tf_mapping.items()})
+
+    ordered_tf_cols = [c for c in tf_cols if c in df_tf.columns]
+
+    # fallback: if nothing matches, keep full df order
+    if not ordered_tf_cols:
+        ordered_tf_cols = df_tf.columns.tolist()
+
+    df_tf[ordered_tf_cols].to_csv(transcript_path, sep="\t", index=False)
+
+    # -------------------------
+    # METADATA EXPORT
+    # -------------------------
+    df_md = df.copy()
+
+    if md_mapping:
+        df_md = df_md.rename(columns={v: k for k, v in md_mapping.items()})
+
+    ordered_md_cols = [c for c in md_cols if c in df_md.columns]
+
+    if not ordered_md_cols:
+        ordered_md_cols = df_md.columns.tolist()
+
+    df_md[ordered_md_cols].to_csv(metadata_path, sep="\t", index=False)
+
+    # -------------------------
+    # RESET STATE
+    # -------------------------
     editor["dirty"] = False
     st.session_state["editor"] = editor
-
 
 # -----------------------------
 # DATA ENGINE RESOLUTION HELPERS
@@ -272,7 +260,6 @@ def run_annotation_gui():
 
     project = st.session_state.get("project", {})
     editor = st.session_state.get("editor", {})
-
     df = project.get("df")
     if df is None:
         st.info("No dataset loaded.")
@@ -284,36 +271,21 @@ def run_annotation_gui():
     from pathlib import Path
     with st.sidebar.expander("📁 Saved Annotation Path"):
         files = st.session_state["project"]["files"]
-        # st.sidebar.header("📁 Annotation Files")
-        # if project.get("mode") != "upload":
-            
-        #     # Read-only source files
-        #     st.sidebar.text_input(
-        #         "Transcript file",
-        #         value=files["transcript_file"],
-        #         disabled=True,
-        #     )
-
-        #     st.sidebar.text_input(
-        #         "Metadata file",
-        #         value=files["meta_file"],
-        #         disabled=True,
-        #     )
-
         files["output_dir"] = st.text_input(
             "Output directory",
             value=files["output_dir"],
         )
 
-        files["update_transcript"] =  str(Path(files["output_dir"]) /st.text_input(
-            "Transcript filename",
-            value=Path(files["update_transcript"]).name,
-        ))
-
-        files["update_meta"] = str(Path(files["output_dir"]) / st.text_input(
-            "Metadata filename",
-            value=Path(files["update_meta"]).name,
-        ))
+        if st.session_state["project"].get("tf_cols"):
+            files["update_transcript"] =  str(Path(files["output_dir"]) /st.text_input(
+                "Transcript filename",
+                value=Path(files["update_transcript"]).name,
+            ))
+        if st.session_state["project"].get("md_cols"):
+            files["update_meta"] = str(Path(files["output_dir"]) / st.text_input(
+                "Metadata filename",
+                value=Path(files["update_meta"]).name,
+            ))
         
         
     
@@ -364,21 +336,18 @@ def run_annotation_gui():
         return
 
     row = df.iloc[idx]
-    print(row)
     # -----------------------------
     # AUDIO CHECK
     # -----------------------------
-    tmp_audio = st.session_state.get("tmp_audio")
-
+    tmp_audio = st.session_state.get("tmp_audio", {})
     if isinstance(tmp_audio, dict):
-        audio_path = tmp_audio.get(row["speaker"], str(row.get("audio_filename", "")))
+        audio_path = tmp_audio.get(str(row.get("audio_filename", ""))) or tmp_audio.get(row["speaker"])
     elif isinstance(tmp_audio, str):
         audio_path = tmp_audio
-    else:
+    elif os.path.exists(str(row.get("audio_filename", ""))):
         audio_path = str(row.get("audio_filename", ""))
-
-    if not os.path.exists(audio_path):
-        st.info(f"{audio_path} not found. Do you want to upload it manually?")
+    else:
+        st.info(f"{str(row.get('audio_filename', ''))} not found. Do you want to upload it manually?")
 
         uploaded_file = st.file_uploader(
             "Upload WAV file",
@@ -394,52 +363,22 @@ def run_annotation_gui():
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
-            # Preserve the original type of tmp_audio
-            if isinstance(tmp_audio, dict):
-                st.session_state["tmp_audio"][row["speaker"]] = temp_path
+            if "tmp_audio" not in st.session_state or not isinstance(st.session_state["tmp_audio"], dict):
+                st.session_state["tmp_audio"] = {}
+
+            if len(df["audio_filename"].dropna().unique()) > 1:
+                st.session_state["tmp_audio"][row["audio_filename"]] = temp_path
             else:
                 st.session_state["tmp_audio"] = temp_path
-
+            
             st.success("Audio uploaded successfully!")
+            audio_path = temp_path
             st.rerun()
 
         st.stop()
+        
 
-    # if tmp_audio.get(row["speaker"]) is None and not os.path.exists(str(row.get("audio_filename", ""))):
-    #     st.info(f"{row.get('audio_filename', '')}Audio file not found. Do you want to upload audio files manually?")
-    #     st.markdown("### 📤 Upload missing audio file")
 
-    #     uploaded_file = st.file_uploader(
-    #         "Upload WAV file",
-    #         type=["wav"],
-    #         key=f"upload_audio_{idx}"
-    #     )
-
-    #     if uploaded_file is not None:
-    #         import tempfile
-
-    #         # save temp file
-    #         temp_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
-
-    #         with open(temp_path, "wb") as f:
-    #             f.write(uploaded_file.getbuffer())
-
-    #         # store in session state
-    #         if "tmp_audio" not in st.session_state or not isinstance(st.session_state["tmp_audio"], dict):
-    #             st.session_state["tmp_audio"] = {}
-
-    #         st.session_state["tmp_audio"][row["speaker"]] = temp_path
-
-    #         st.success("Audio uploaded successfully!")
-    #         st.rerun()
-    #     # return
-    #     st.stop()
-    
-    # audio_path = st.session_state.get("tmp_audio").get("tmp_audio", {}).get(row['speaker'], str(row.get("audio_filename", "")))
-    # audio_path = tmp_audio.get(
-    #     row["speaker"],
-    #     str(row.get("audio_filename", ""))
-    # )
     with wave.open(audio_path, "rb") as w:
         total_file_seconds = w.getnframes() / w.getframerate()
     # st.write("---")
@@ -447,9 +386,9 @@ def run_annotation_gui():
     with col_audio:
         st.markdown("### 🎚️ Audio Editing")
     with col_transcript:
-        row["filename"] =  str(Path(row["filename"]) / st.text_input(
+        final_seg_filename =  str(Path(row["seg_filename"]) / st.text_input(
             "Transcript filename",
-            value=Path(row["filename"]).name,
+            value=Path(row["seg_filename"]).name,
         ))
     # -----------------------------
     # RANGE SLIDER
@@ -493,7 +432,6 @@ def run_annotation_gui():
     # EDITOR WORKSPACE BLOCK
     # -----------------------------
     md_cols = st.session_state["project"]["md_cols"]
-    
     optional_matrix = build_optional_fields(md_cols)
     # Run structural automatic hider logic calculations
     for hide_key, cols in optional_matrix.items():
@@ -638,7 +576,7 @@ def run_annotation_gui():
     # SAVE BUTTON
     # -----------------------------
     if st.button("💾 Save"):
-        df.at[idx, "filename"] = row["filename"]
+        df.at[idx, "seg_filename"] = final_seg_filename
         df.at[idx, "start_sec"] = round(selected_start, 2)
         df.at[idx, "end_sec"] = round(selected_end, 2)
         df.at[idx, "transcription"] = new_text
@@ -705,7 +643,6 @@ def run_annotation() -> None:
     st.set_page_config(page_title="Visual Timeline Audio Trimmer", initial_sidebar_state="expanded", layout="wide")
     
     st.title("✂️ Editing Annotation")
-    print(st.session_state['project'])
     if st.session_state['project'].get("df") is None:
         if st.session_state.get("result"):
             load_data()

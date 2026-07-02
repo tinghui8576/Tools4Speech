@@ -21,7 +21,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
-from page.setup import _switch_tab, _reset_state
+from page.setup import _switch_tab
+from page.setup import reset_state
 import streamlit as st
 
 # ── Path setup ────────────────────────────────────────────────────────────────
@@ -197,20 +198,7 @@ def _cancel_pipeline() -> None:
     st.session_state.error = "Pipeline cancelled by user."
 
 
-def _reset_state() -> None:
-    for key in (
-        "running",
-        "done",
-        "log_lines",
-        "result",
-        "error",
-        "_thread",
-        "_shared",
-        "output_dir_input",
-        "_output_dir_suggestion",
-        "tmp_audio"
-    ):
-        st.session_state.pop(key, None)
+
 
 
 def _compute_output_dir_suggestion(
@@ -631,13 +619,7 @@ def _render_preprocessing_profile(
 
     return enabled, cfg
 
-def _reset_state() -> None:
-    for key in (
-        "project",
-        "editor",
-        "result"
-    ):
-        st.session_state.pop(key, None)
+
 # ── Main app ──────────────────────────────────────────────────────────────────
 def run_pipeline() -> None:
 
@@ -653,18 +635,18 @@ def run_pipeline() -> None:
     )
 
     # ── Session-state initialisation ──────────────────────────────────────────
-    for key, default in {
-        "running": False,
-        "done": False,
-        "log_lines": [],
-        "result": None,
-        "error": None,
-        "_thread": None,
-        "_shared": None,
-        "tmp_audio": None
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
+    # for key, default in {
+    #     "running": False,
+    #     "done": False,
+    #     "log_lines": [],
+    #     "result": None,
+    #     "error": None,
+    #     "_thread": None,
+    #     "_shared": None,
+    #     "tmp_audio": None
+    # }.items():
+    #     if key not in st.session_state:
+    #         st.session_state[key] = default
 
     # =========================================================================
     # PIPELINE MODE
@@ -1270,8 +1252,6 @@ def run_pipeline() -> None:
                 default=missing_options
             )
     
-    # if "Age/Sex" in generate_metadata:
-    #     print(generate_metadata)
     # =========================================================================
     # AUDIO PREPROCESSING
     # =========================================================================
@@ -1583,6 +1563,8 @@ def run_pipeline() -> None:
 
     with col_run:
         if st.button("▶  Run Pipeline", type="primary", disabled=run_disabled):
+            reset_state()
+
             if _continue_mode:
                 kwargs: dict[str, Any] = dict(
                     existing_path=existing_path,
@@ -1656,9 +1638,8 @@ def run_pipeline() -> None:
                     evaluate_plot_dpi=evaluate_plot_dpi,
                 )
                 _worker = _pipeline_worker
-            _reset_state()
+            
             st.session_state.tmp_audio = speakers_audio
-            print(speakers_audio, st.session_state)
 
             shared: dict[str, Any] = {
                 "log_lines": [],
@@ -1679,7 +1660,7 @@ def run_pipeline() -> None:
     with col_reset:
         if st.session_state.done:
             if st.button("🔄  Reset / run again"):
-                _reset_state()
+                reset_state()
                 st.rerun()
     # =========================================================================
     # LIVE LOG (while running)
@@ -1715,7 +1696,8 @@ def run_pipeline() -> None:
             st.error(f"**Pipeline failed:**\n\n```\n{st.session_state.error}\n```")
         else:
             st.success("✅ Pipeline completed successfully!")
-            st.button("🏷️ Open Annotation GUI for continue annotation", on_click=_switch_tab, args=("✂️ Annotation",))
+            if st.session_state.tmp_audio is not None:
+                st.button("🏷️ Open Annotation GUI for continue annotation", on_click=_switch_tab, args=("✂️ Annotation",))
             
             result: dict = st.session_state.result or {}
 
