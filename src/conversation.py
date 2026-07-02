@@ -668,7 +668,7 @@ def process_conversation(
                 results = transcribe_segments(
                     model=model,
                     segments=speaker_segments.reset_index(drop=True),
-                    audio_path=_orig[speaker],
+                    audio_path=audio_path,
                     output_dir=speaker_dirs[speaker],
                     speaker=speaker,
                     cache=persist_transcription_artifacts,

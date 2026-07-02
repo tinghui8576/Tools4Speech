@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
-
+from page.setup import _switch_tab, _reset_state
 import streamlit as st
 
 # ── Path setup ────────────────────────────────────────────────────────────────
@@ -196,9 +196,6 @@ def _cancel_pipeline() -> None:
     st.session_state.done = True
     st.session_state.error = "Pipeline cancelled by user."
 
-def _switch_tab(tab):
-    print("switch", tab)
-    st.session_state.mode = tab
 
 def _reset_state() -> None:
     for key in (
@@ -211,6 +208,7 @@ def _reset_state() -> None:
         "_shared",
         "output_dir_input",
         "_output_dir_suggestion",
+        "tmp_audio"
     ):
         st.session_state.pop(key, None)
 
@@ -633,7 +631,13 @@ def _render_preprocessing_profile(
 
     return enabled, cfg
 
-
+def _reset_state() -> None:
+    for key in (
+        "project",
+        "editor",
+        "result"
+    ):
+        st.session_state.pop(key, None)
 # ── Main app ──────────────────────────────────────────────────────────────────
 def run_pipeline() -> None:
 
@@ -657,6 +661,7 @@ def run_pipeline() -> None:
         "error": None,
         "_thread": None,
         "_shared": None,
+        "tmp_audio": None
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -761,7 +766,6 @@ def run_pipeline() -> None:
                 if audio_file is not None:
                     try:
                         _tmp_path = _save_upload(audio_file, prefix=f"tmp_{i}_")
-                        print(_tmp_path)
                         _tmp_audio, _tmp_sr = load_audio(_tmp_path)
                         _tmp_stats = analyse_audio(_tmp_audio, _tmp_sr)
                         _tmp_duration_sec = _tmp_stats.get("duration_sec", 0)
@@ -1266,8 +1270,8 @@ def run_pipeline() -> None:
                 default=missing_options
             )
     
-    if "Age/Sex" in generate_metadata:
-        print(generate_metadata)
+    # if "Age/Sex" in generate_metadata:
+    #     print(generate_metadata)
     # =========================================================================
     # AUDIO PREPROCESSING
     # =========================================================================
@@ -1652,6 +1656,9 @@ def run_pipeline() -> None:
                     evaluate_plot_dpi=evaluate_plot_dpi,
                 )
                 _worker = _pipeline_worker
+            _reset_state()
+            st.session_state.tmp_audio = speakers_audio
+            print(speakers_audio, st.session_state)
 
             shared: dict[str, Any] = {
                 "log_lines": [],

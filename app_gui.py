@@ -17,7 +17,25 @@ from page.annotation_gui import run_annotation
 from page.upload import run_upload
 import streamlit as st
 
+def _init_state():
+    st.session_state.setdefault("project", {
+        "mode": None,
+        "files": {},
+        "df": None,
+        "mapping": {},
+    })
 
+    st.session_state.setdefault("editor", {
+        "selected_idx": None,
+        "dirty": False,
+        "hidden_fields": set(),
+        "init_hidden_fields": set(),
+        "initialized_fields": set(),
+        "current_state": {},
+        "last_selected_idx": None,
+        "pending_idx": None,
+        "show_discard": False,
+    })
 
 
 # ── Main app ──────────────────────────────────────────────────────────────────
@@ -39,7 +57,8 @@ def main() -> None:
         key="mode"
     )
     
-
+    
+    _init_state()
     with tab_upload:
         if st.session_state.mode == "📤 Upload":
             run_upload()

@@ -5,33 +5,8 @@ import time
 import pandas as pd
 import streamlit as st
 import numpy as np
+from page.setup import normalize_schema, _next_available_name
 
-# -----------------------------
-# CONFIG & PATH CONSTANTS
-# -----------------------------
-
-REQUIRED_FIELDS = [
-    "audio_filename",
-    "transcription",
-    "start_sec",
-    "end_sec",
-]
-
-PIPELINE_FIELDS = [
-    "audio_filename",
-    "transcription",
-    "filename",
-    'start_sec',
-    'end_sec',
-    "speaker",
-    "type",
-    "sex",
-    "age",
-    "emoCat",
-    "arousal",
-    "valence",
-    "dominance",
-]
 # -----------------------------
 # FILE & AUDIO UTILITIES
 # -----------------------------
@@ -58,18 +33,6 @@ def slice_wav_bytes(file_path: str, start_sec: float, end_sec: float) -> bytes:
 def apply_mapping(df: pd.DataFrame) -> pd.DataFrame:
     rename_dict = st.session_state.get("col_mapping", {})
     return df.rename(columns=rename_dict)
-
-
-def _next_available_name(output_dir, prefix):
-    path = os.path.join(output_dir, f"{prefix}.txt")
-
-    i = 1
-    while os.path.exists(path):
-        path = os.path.join(output_dir, f"{prefix}_{i}.txt")
-        i += 1
-    return path
-
-
 def load_data() -> pd.DataFrame:
     """Loads previously processed transcript and metadata into the project."""
 
@@ -105,16 +68,17 @@ def load_data() -> pd.DataFrame:
     project["tf_cols"] = list(df_ts.columns)
     project["md_cols"] = list(df_md.columns)
 
-    if "seg_filename" not in df_ts.columns or "seg_filename" not in df_md.columns:
-        st.error("Missing 'seg_filename' column.")
+    df_ts = normalize_schema(df_ts, None)
+    df_md = normalize_schema(df_md, None)
+    if "filename" not in df_ts.columns or "filename" not in df_md.columns:
+        st.error("Missing 'filename' column.")
         return None
 
-    df = df_ts.merge(df_md, on=["seg_filename", "speaker"], how="inner")
-    df = normalize_schema(df, None)
+    df = df_ts.merge(df_md, on=["filename", "speaker"], how="inner")
+    
 
     project["df"] = df
     project["mode"] = "annotation"
-
     # Reset editor state
     st.session_state["editor"] = {
         "selected_idx": None,
@@ -193,17 +157,6 @@ def _resolve_value(field, row_data, default=None):
         return default
 
     return value
-def normalize_schema(df: pd.DataFrame, mapping: dict):
-    # if mapping exists → rename
-    if mapping:
-        df = df.rename(columns=mapping)
-
-    # ensure all expected columns exist
-    for col in PIPELINE_FIELDS:
-        if col not in df.columns:
-            df[col] = np.nan
-
-    return df
 
 def build_optional_fields(md_cols: list) -> dict:
     """Builds visibility lookup matrix maps using source file constraints."""
@@ -315,34 +268,6 @@ def _switch_segment(new_idx: int):
     st.session_state["editor"] = editor
     st.rerun()
 
-def _reset_state() -> None:
-    for key in (
-        "project",
-        "editor",
-        "result"
-    ):
-        st.session_state.pop(key, None)
-
-def _init_state():
-    st.session_state.setdefault("project", {
-        "mode": None,
-        "files": {},
-        "df": None,
-        "mapping": {},
-    })
-
-    st.session_state.setdefault("editor", {
-        "selected_idx": None,
-        "dirty": False,
-        "hidden_fields": set(),
-        "init_hidden_fields": set(),
-        "initialized_fields": set(),
-        "current_state": {},
-        "last_selected_idx": None,
-        "pending_idx": None,
-        "show_discard": False,
-    })
-
 def run_annotation_gui():
 
     project = st.session_state.get("project", {})
@@ -356,6 +281,42 @@ def run_annotation_gui():
     # -----------------------------
     # SIDEBAR NAVIGATION
     # -----------------------------
+    from pathlib import Path
+    with st.sidebar.expander("📁 Saved Annotation Path"):
+        files = st.session_state["project"]["files"]
+        # st.sidebar.header("📁 Annotation Files")
+        # if project.get("mode") != "upload":
+            
+        #     # Read-only source files
+        #     st.sidebar.text_input(
+        #         "Transcript file",
+        #         value=files["transcript_file"],
+        #         disabled=True,
+        #     )
+
+        #     st.sidebar.text_input(
+        #         "Metadata file",
+        #         value=files["meta_file"],
+        #         disabled=True,
+        #     )
+
+        files["output_dir"] = st.text_input(
+            "Output directory",
+            value=files["output_dir"],
+        )
+
+        files["update_transcript"] =  str(Path(files["output_dir"]) /st.text_input(
+            "Transcript filename",
+            value=Path(files["update_transcript"]).name,
+        ))
+
+        files["update_meta"] = str(Path(files["output_dir"]) / st.text_input(
+            "Metadata filename",
+            value=Path(files["update_meta"]).name,
+        ))
+        
+        
+    
     st.sidebar.header("⏳ Audio Slices Queue")
 
     for idx, row in df.iterrows():
@@ -403,41 +364,110 @@ def run_annotation_gui():
         return
 
     row = df.iloc[idx]
-
-    st.markdown(
-        f"<p style='color: gray; font-size: 14px; margin-bottom: 20px;'>"
-        # f"📁 <b>Source File Footprint:</b> <code>{row_data['audio_filename']}</code> | "
-        f"💾 <b>Target:</b> <code>{row['seg_filename']}</code></p>", 
-        unsafe_allow_html=True
-    )
-
+    print(row)
     # -----------------------------
     # AUDIO CHECK
     # -----------------------------
-    if not os.path.exists(str(row.get("audio_filename", ""))):
-        st.error("Audio file not found.")
+    tmp_audio = st.session_state.get("tmp_audio")
+
+    if isinstance(tmp_audio, dict):
+        audio_path = tmp_audio.get(row["speaker"], str(row.get("audio_filename", "")))
+    elif isinstance(tmp_audio, str):
+        audio_path = tmp_audio
+    else:
+        audio_path = str(row.get("audio_filename", ""))
+
+    if not os.path.exists(audio_path):
+        st.info(f"{audio_path} not found. Do you want to upload it manually?")
+
+        uploaded_file = st.file_uploader(
+            "Upload WAV file",
+            type=["wav"],
+            key=f"upload_audio_{idx}",
+        )
+
+        if uploaded_file is not None:
+            import tempfile
+
+            temp_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
+
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+
+            # Preserve the original type of tmp_audio
+            if isinstance(tmp_audio, dict):
+                st.session_state["tmp_audio"][row["speaker"]] = temp_path
+            else:
+                st.session_state["tmp_audio"] = temp_path
+
+            st.success("Audio uploaded successfully!")
+            st.rerun()
+
         st.stop()
 
-    with wave.open(str(row["audio_filename"]), "rb") as w:
+    # if tmp_audio.get(row["speaker"]) is None and not os.path.exists(str(row.get("audio_filename", ""))):
+    #     st.info(f"{row.get('audio_filename', '')}Audio file not found. Do you want to upload audio files manually?")
+    #     st.markdown("### 📤 Upload missing audio file")
+
+    #     uploaded_file = st.file_uploader(
+    #         "Upload WAV file",
+    #         type=["wav"],
+    #         key=f"upload_audio_{idx}"
+    #     )
+
+    #     if uploaded_file is not None:
+    #         import tempfile
+
+    #         # save temp file
+    #         temp_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
+
+    #         with open(temp_path, "wb") as f:
+    #             f.write(uploaded_file.getbuffer())
+
+    #         # store in session state
+    #         if "tmp_audio" not in st.session_state or not isinstance(st.session_state["tmp_audio"], dict):
+    #             st.session_state["tmp_audio"] = {}
+
+    #         st.session_state["tmp_audio"][row["speaker"]] = temp_path
+
+    #         st.success("Audio uploaded successfully!")
+    #         st.rerun()
+    #     # return
+    #     st.stop()
+    
+    # audio_path = st.session_state.get("tmp_audio").get("tmp_audio", {}).get(row['speaker'], str(row.get("audio_filename", "")))
+    # audio_path = tmp_audio.get(
+    #     row["speaker"],
+    #     str(row.get("audio_filename", ""))
+    # )
+    with wave.open(audio_path, "rb") as w:
         total_file_seconds = w.getnframes() / w.getframerate()
-
-    st.write("---")
-    st.markdown("### 🎚️ Audio Editing")
-
+    # st.write("---")
+    col_audio, col_transcript = st.columns(2)
+    with col_audio:
+        st.markdown("### 🎚️ Audio Editing")
+    with col_transcript:
+        row["filename"] =  str(Path(row["filename"]) / st.text_input(
+            "Transcript filename",
+            value=Path(row["filename"]).name,
+        ))
     # -----------------------------
     # RANGE SLIDER
     # -----------------------------
     slider_key = f"slider_{idx}"
-    default_range = (float(row["start_sec"]), float(row["end_sec"]))
     
     # reset hook 
     if st.session_state.get("_reset_slider"):
-        st.session_state[slider_key] = default_range
+        st.session_state[slider_key] = (float(row["start_sec"]), float(row["end_sec"]))
         check_dirty_callback()
         st.session_state["_reset_slider"] = False
 
     col_slider, col_refresh = st.columns([5, 1])
-
+    if slider_key not in st.session_state:
+        st.session_state[slider_key] = (
+            float(_resolve_value("start_sec", row, 0.0)),
+            float(_resolve_value("end_sec", row, 0.0)),
+        )
     with col_slider:
         time_range = st.slider(
             "Isolate Audio Playback Area",
@@ -446,16 +476,16 @@ def run_annotation_gui():
             step=0.05,
             format="%.2f seconds",
             key=slider_key,
-            value=(float(_resolve_value("start_sec", row, 0.0)), float(_resolve_value("end_sec", row, 0.0))),
+            # value=(float(_resolve_value("start_sec", row, 0.0)), float(_resolve_value("end_sec", row, 0.0))),
             on_change=check_dirty_callback
         )
     with col_refresh:
-        if st.button("🔄 Reset Trim", use_container_width=True):
+        if st.button("🔄 Reset Trim", width='stretch'):
             st.session_state["_reset_slider"] = True
             st.rerun()
     selected_start, selected_end = time_range
     # Audio Fragment Context Playback
-    audio_bytes = slice_wav_bytes(str(row["audio_filename"]), selected_start, selected_end )
+    audio_bytes = slice_wav_bytes(audio_path, selected_start, selected_end )
     if audio_bytes:
         st.audio(audio_bytes, format="audio/wav")
         st.caption(f"🎵 Active selection run: {(selected_end - selected_start):.2f} seconds total duration.")
@@ -474,7 +504,7 @@ def run_annotation_gui():
             st.session_state["editor"]['initialized_fields'].add(hide_key)
     # Replaced st.form with an st.container to fully support the nested header hide buttons
     with st.container(border=True):
-        with st.expander("📝 Edit Transcription Notes", expanded=True):
+        with st.expander("📝 Transcription Notes", expanded=True):
             current_text = _resolve_value("transcription", row, "")
             new_text = st.text_area(
                 "Transcription text content:", 
@@ -608,7 +638,7 @@ def run_annotation_gui():
     # SAVE BUTTON
     # -----------------------------
     if st.button("💾 Save"):
-
+        df.at[idx, "filename"] = row["filename"]
         df.at[idx, "start_sec"] = round(selected_start, 2)
         df.at[idx, "end_sec"] = round(selected_end, 2)
         df.at[idx, "transcription"] = new_text
@@ -675,7 +705,7 @@ def run_annotation() -> None:
     st.set_page_config(page_title="Visual Timeline Audio Trimmer", initial_sidebar_state="expanded", layout="wide")
     
     st.title("✂️ Editing Annotation")
-    _init_state()
+    print(st.session_state['project'])
     if st.session_state['project'].get("df") is None:
         if st.session_state.get("result"):
             load_data()

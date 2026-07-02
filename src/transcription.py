@@ -8,7 +8,7 @@ import gc
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -382,7 +382,7 @@ def transcribe_segments(
                 {
                     "idx": idx,
                     "speaker": row_speaker,
-                    "audio_filename": audio_path,
+                    "audio_filename": Path(audio_path).name,
                     "start_sec": start,
                     "end_sec": end,
                     "transcription": "",
@@ -399,7 +399,7 @@ def transcribe_segments(
             {
                 "idx": idx,
                 "speaker": row_speaker,
-                "audio_filename": audio_path,
+                "audio_filename": Path(audio_path).name,
                 "start_sec": start,
                 "end_sec": end,
                 "seg_filename": seg_filename,
