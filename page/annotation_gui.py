@@ -75,7 +75,7 @@ def load_data() -> pd.DataFrame:
     df = merge_datasets(df_ts, df_md)
     project["df"] = df
     project["mode"] = "annotation"
-    
+
 def save_data(df: pd.DataFrame):
     project = st.session_state.get("project", {})
     editor = st.session_state.get("editor", {})
@@ -347,6 +347,8 @@ def run_annotation_gui():
     elif os.path.exists(str(row.get("audio_filename", ""))):
         audio_path = str(row.get("audio_filename", ""))
     else:
+        audio_path = None
+    if audio_path is None:
         st.info(f"{str(row.get('audio_filename', ''))} not found. Do you want to upload it manually?")
 
         uploaded_file = st.file_uploader(

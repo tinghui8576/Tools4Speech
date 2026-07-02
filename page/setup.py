@@ -7,7 +7,6 @@ import numpy as np
 # -----------------------------
 
 def _switch_tab(tab):
-    print("switch", tab)
     st.session_state.mode = tab
 
 
@@ -146,40 +145,48 @@ def _guess(field, cols):
     return "(none)"
 
 def build_mapping_ui():
-    tf_mapping = {}
-    md_mapping = {}
     project = st.session_state["project"]
 
     tf_cols = project.get("tf_cols", [])
     md_cols = project.get("md_cols", [])
-    tf_choice, md_choice = None, None
+
     if not tf_cols and not md_cols:
         st.info("Upload at least one file to configure mapping")
         return None, None
 
     st.subheader("Column Mapping")
 
-    mapping = {}
-    for field in PIPELINE_FIELDS:
+    tf_mapping = {}
+    md_mapping = {}
 
-        # st.markdown(f"### 🔧 {field}")
+    mapping = {}
+
+    for field in PIPELINE_FIELDS:
 
         c1, c2 = st.columns(2)
 
+        tf_choice = "(none)"
+        md_choice = "(none)"
+
+        # ---------------- TF ----------------
         if tf_cols:
             with c1:
                 default = _guess(field, tf_cols)
                 options = ["(none)"] + tf_cols
+
                 tf_choice = st.selectbox(
                     f"{field} → TF column",
                     options=options,
                     key=f"tf_{field}",
                     index=options.index(default) if default in options else 0
                 )
+
+        # ---------------- MD ----------------
         if md_cols:
             with c2:
                 default = _guess(field, md_cols)
                 options = ["(none)"] + md_cols
+
                 md_choice = st.selectbox(
                     f"{field} → MD column",
                     options=options,
@@ -187,26 +194,25 @@ def build_mapping_ui():
                     index=options.index(default) if default in options else 0
                 )
 
-        mapping[field] = {
-            "tf": tf_choice,
-            "md": md_choice
-        }
-        
+
+        mapping[field] = {"tf": tf_choice, "md": md_choice}
+
+    # ---------------- VALIDATION ----------------
     missing = [
         f for f in REQUIRED_FIELDS
         if mapping[f]["tf"] == "(none)" and mapping[f]["md"] == "(none)"
     ]
+
     if missing:
-        st.error(
-            "Please map the following required fields:\n" +
-            ", ".join(missing)
-        )
+        st.error("Missing required fields: " + ", ".join(missing))
         return None, None
-        
-    for pipeline_field, m in mapping.items():
+
+    # ---------------- BUILD FINAL MAPS ----------------
+    for field, m in mapping.items():
         if m["tf"] != "(none)":
-            tf_mapping[m["tf"]] = pipeline_field
+            tf_mapping[m["tf"]] = field
 
         if m["md"] != "(none)":
-            md_mapping[m["md"]] = pipeline_field
+            md_mapping[m["md"]] = field
+
     return tf_mapping, md_mapping

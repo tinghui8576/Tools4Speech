@@ -71,9 +71,10 @@ def run_upload():
     if not st.session_state.merged:
         if st.button("Merge datasets"):
             reset_state()
-            
-            df_ts = normalize_schema(df_ts, tf_mapping)
-            df_md = normalize_schema(df_md, md_mapping)
+            if tf_mapping:
+                df_ts = normalize_schema(df_ts, tf_mapping)
+            if md_mapping:
+                df_md = normalize_schema(df_md, md_mapping)
             df = merge_datasets(df_ts, df_md)
             st.session_state["project"]["df"] = df
             st.session_state["project"]["mapping"] ={
