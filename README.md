@@ -1,11 +1,15 @@
-# Speech VAD, Diarization & Transcription Pipeline
+# Tools4Speech - A Semi-Automatic Annotation Pipeline for Conversation Speech Dataset
 
-End-to-end processing of conversation recordings with support for both pre-separated and mixed audio. Produces cleaned, transcribed, and labeled segments; labels can optionally be exported to the user's annotation software of choice (e.g., ELAN) for manual review.
+A semi-automatic annotation pipeline for converting conversational audio recordings into high-quality speech datasets for downstream speech applications, including Automatic Speech Recognition (ASR), Speaker Diarization, and Speech Emotion Recognition (SER). The pipeline supports both pre-separated speaker recordings and mixed conversational audio. Starting from raw audio, it generates transcriptions and can optionally produce metadata such as speaker identities, emotions, and other speaker-related information. It also provides an annotation interface that allows users to review, edit, and refine the automatically generated labels, enabling efficient human-in-the-loop annotation while reducing manual effort. The primary goal of Tools4Speech is to accelerate the creation of annotated conversational speech datasets, particularly for low-resource languages, by reducing manual annotation effort while maintaining high data quality.
+
+<!-- labels can optionally be exported to the user's annotation software of choice (e.g., ELAN) for manual review. -->
+
 
 <!-- ![Pipeline Flowchart](docs/figures/Protocol.png)
 *Pipeline architecture: splits at Stage 1 (VAD vs Diarization) based on input type, then converges for unified processing.* -->
 
-## Features
+
+<!-- ## Features
 
 - **Multiple VAD methods**: rVAD, Silero (multi-channel)
 - **Diarization**: Pyannote.audio and NeMo for single-channel recordings
@@ -17,12 +21,11 @@ End-to-end processing of conversation recordings with support for both pre-separ
 - **Continue mode**: Resume processing from an existing labels file (`.txt` or `.ass`), adding only missing steps
 
 ---
-
+-->
 ## Installation
-
-FFmpeg is required for audio processing. The recommended approach uses Make shortcuts for a one-command install.
-
-### Make Shortcuts (Recommended)
+<details>
+<!-- ###  -->
+<summary>  <strong> Make Shortcuts (Recommended)</strong> </summary>
 
 ```bash
 git clone https://github.com/haraldsr/Speech_VAD_Diarization_Transcription.git
@@ -30,11 +33,10 @@ cd Speech_VAD_Diarization_Transcription
 make install         # Auto-detects GPU/CPU and installs from lockfile
 ```
 
-`make install` auto-detects GPU using `nvidia-smi`:
-- **GPU detected** → uses `requirements-lock-uv-gpu.txt`
-- **No GPU** → uses `requirements-lock-uv-cpu.txt`
 
-Other shortcuts:
+  
+<details>
+<summary> Other make shortcuts:</summary>
 
 ```bash
 make install-dev     # Install from requirements.txt (for development/testing)
@@ -47,9 +49,21 @@ make install-conda   # Full Conda install (slower, no UV)
 make gen-lock        # Auto-detects GPU and names the lockfile accordingly
 ```
 
-### Manual Option 1: Pure UV
+</details>
 
-Use this if you have admin access to install system packages.
+</details>
+
+<!--
+`make install` auto-detects GPU using `nvidia-smi`:
+- **GPU detected** → uses `requirements-lock-uv-gpu.txt`
+- **No GPU** → uses `requirements-lock-uv-cpu.txt`
+
+
+-->
+
+<details>
+<!-- ###  -->
+<summary>  <strong> Pure UV </strong> </summary>
 
 ```bash
 # Install FFmpeg
@@ -68,10 +82,14 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 uv pip install -r requirements-lock-uv-cpu.txt  # or requirements-lock-uv-gpu.txt
 pip install -e .
 ```
+</details>
 
-### Manual Option 2: Hybrid Conda + UV (No Admin Access)
+<details>
+<!-- ###  -->
 
-Use this on HPC clusters or systems where you cannot install FFmpeg at the system level. Requires Conda/Mamba to be pre-installed.
+<summary>  <strong> Conda + UV (Least Recommended)</strong> </summary>
+
+>  Mixing Conda and UV is not ideal, but necessary when system package installation is unavailable.
 
 ```bash
 # Install UV
@@ -89,10 +107,9 @@ conda activate vdt
 uv pip install -r requirements-lock-uv-cpu.txt  # or requirements-lock-uv-gpu.txt
 pip install -e .
 ```
+</details>
 
-**Note:** Mixing Conda and UV is not ideal, but necessary when system package installation is unavailable.
 
----
 
 ## Quick Start
 
@@ -103,22 +120,64 @@ The easiest way to run the pipeline is via the interactive web interface:
 ```bash
 make app
 ```
-
-Alternatively, you can launch the Streamlit app directly:
-
+or launch the Streamlit app directly
 ```bash
-streamlit run app_gui.py
+streamlit run app_gui.py 
 ```
 
+
 The GUI supports:
-- **Pre-separated audio** (dyad/triad): upload one file per speaker
-- **Diarization mode**: upload a single mixed-channel file
-- **Continue mode**: upload an existing labels file (`.txt` or `.ass`) to add missing transcription or classification
-- **Live log output**, cancel button, and inline evaluation plots
+- **Pipeline**
+    - **Pre-separated audio** (dyad/triad): upload one file per speaker
+    - **Diarization mode**: upload a single mixed-channel file
+    - **Continue mode**: upload an existing labels file (`.txt` or `.ass`) to add missing transcription or classification
+    - **Configuration**: Different optional setting when generating automatic labelling
+    - **Live log output**, cancel button, and inline evaluation plots
+- **Upload**
+    - **Exisiting file mode**: upload exisiting transcription label file (`.txt` or `.csv` or `.tsv`) [optional metadata file (`.txt` or `.csv` or `.tsv`)
+    - **Mapping toolkit cols**: Mapping exisiting into predefine attributes
+- **Annotation**   
+
+### CLI example
+> \[!Note]
+> Check for complete examples with different configurations.
+```bash
+# Generate result from start to end with the bundled recordings under `demo/audio/`. Override the paths or build your own CLI by importing the package API directly.
+python conversation_pipeline.py 
+
+# Single pair — reference vs hypothesis
+python scripts/evaluate.py \
+    --ref examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt \
+  --hyp outputs/dyad/final_labels.txt \
+  --plot
+
+# Point at output directory (auto-finds final_labels.txt)
+python scripts/evaluate.py \
+    --ref examples/all_files/EXP10_NoiseP1_T1.txt \
+  --output-dir outputs/test \
+  --plot --plot-format pdf
+
+# Select specific stages and collar
+python scripts/evaluate.py \
+    --ref ref.txt --hyp hyp.txt \
+    --stages vad diarization \
+    --collar 0.5
+
+# Batch mode (tab-separated ref<TAB>hyp file)
+python scripts/evaluate.py --batch-file eval_pairs.txt --json results.json
+
+# Control plot output location and quality
+python scripts/evaluate.py \
+  --ref ref.txt --hyp hyp.txt \
+  --plot --plot-dir figures --plot-format png --plot-dpi 200
+
+# Default plotting format is PDF (no DPI needed)
+python scripts/evaluate.py \
+  --ref ref.txt --hyp hyp.txt \
+  --plot
+```
 
 ### Python API
-
-See `conversation_pipeline.py` for complete examples with different configurations.
 
 #### Pre-separated Audio (Dyad/Triad)
 
@@ -146,6 +205,8 @@ results = process_conversation(
     vad_type="rvad",
 )
 ```
+
+
 
 ### Single Mixed Audio (Diarization)
 
@@ -381,43 +442,6 @@ results = process_conversation(
 # Also available via results["evaluation"]
 ```
 
-### Standalone CLI Evaluation
-
-Evaluate existing pipeline outputs without re-running the pipeline:
-
-```bash
-# Single pair — reference vs hypothesis
-python scripts/evaluate.py \
-    --ref examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt \
-  --hyp outputs/dyad/final_labels.txt \
-  --plot
-
-# Point at output directory (auto-finds final_labels.txt)
-python scripts/evaluate.py \
-    --ref examples/all_files/EXP10_NoiseP1_T1.txt \
-  --output-dir outputs/test \
-  --plot --plot-format pdf
-
-# Select specific stages and collar
-python scripts/evaluate.py \
-    --ref ref.txt --hyp hyp.txt \
-    --stages vad diarization \
-    --collar 0.5
-
-# Batch mode (tab-separated ref<TAB>hyp file)
-python scripts/evaluate.py --batch-file eval_pairs.txt --json results.json
-
-# Control plot output location and quality
-python scripts/evaluate.py \
-  --ref ref.txt --hyp hyp.txt \
-  --plot --plot-dir figures --plot-format png --plot-dpi 200
-
-# Default plotting format is PDF (no DPI needed)
-python scripts/evaluate.py \
-  --ref ref.txt --hyp hyp.txt \
-  --plot
-```
-
 ### Supported Reference Formats
 
 References are auto-detected but can be overridden with `--ref-fmt`:
@@ -534,66 +558,6 @@ export ELECTRICITYMAPS_API_KEY="your-api-key"
 
 Logs are saved to `logs/carbon/`. See `conversation_pipeline.py` for configuration options including CPU TDP simulation for systems without direct power measurement.
 
----
-
-## Troubleshooting
-
-### FFmpeg Not Found / Torchcodec Error
-```bash
-# The error "Could not load libtorchcodec" means FFmpeg is missing
-# Install FFmpeg at system level:
-
-# Ubuntu/Debian:
-sudo apt update && sudo apt install -y ffmpeg
-
-# macOS:
-brew install ffmpeg
-
-# Verify installation:
-ffmpeg -version
-
-# Then reinstall torchcodec:
-pip install --force-reinstall torchcodec==0.8.1
-```
-
-**Note:** Conda environments include FFmpeg automatically. UV/pip environments require manual FFmpeg installation.
-
-### FFmpeg Version Mismatch
-
-If you see errors about missing symbols or incompatible FFmpeg libraries:
-
-```bash
-# Check FFmpeg version (requires 6.x or 7.x for torchcodec)
-ffmpeg -version
-
-# Ubuntu 22.04 has FFmpeg 4.x by default - use Conda or upgrade:
-conda install -c conda-forge ffmpeg=7.*
-
-# Or reinstall torchcodec to match your FFmpeg version:
-pip install --force-reinstall torchcodec
-```
-
-### Out of Memory
-```python
-# Reduce batch sizes
-batch_size=15.0, # sec
-```
-
-### GPU Not Detected
-```python
-# Check PyTorch CUDA
-import torch
-print(torch.cuda.is_available())
-
-# Force CPU if needed
-whisper_device="cpu"
-```
-
-### Package Version Conflicts
-```bash
-# Use UV for better dependency resolution
-uv pip install -r requirements-lock-uv-gpu.txt --upgrade  # or requirements-lock-uv-cpu.txt
-```
 
 ---
 
