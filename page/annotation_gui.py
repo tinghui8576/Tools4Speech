@@ -388,10 +388,13 @@ def run_annotation_gui():
     with col_audio:
         st.markdown("### 🎚️ Audio Editing")
     with col_transcript:
-        final_seg_filename =  str(Path(row["seg_filename"]) / st.text_input(
+        filename = st.text_input(
             "Transcript filename",
             value=Path(row["seg_filename"]).name,
-        ))
+            key=f"seg_filename_{idx}",
+        )
+
+        final_seg_filename = str(Path(row["seg_filename"]).parent / filename)
     # -----------------------------
     # RANGE SLIDER
     # -----------------------------
