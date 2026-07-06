@@ -20,50 +20,51 @@ A semi-automatic annotation pipeline for converting conversational audio recordi
 - **Streamlit GUI**: Interactive web interface (`app_gui.py`) for running the pipeline without code
 - **Continue mode**: Resume processing from an existing labels file (`.txt` or `.ass`), adding only missing steps
 
----
+
 -->
+
 
 ## Table of Contents
 * [Installation](#installation)
 * [Quick Start](#quick-start)
 * [Key Parameters](#key-parameters)
+* [Speaker Traits Metadata (optional)](#speaker-traits-metadata-optional)
 * [Audio Preprocessing / Speech Enhancement](#audio-preprocessing--speech-enhancement)
   * [How to Enable Preprocessing](#how-to-enable-preprocessing)
-  * 
+  * [Processing Steps](#processing-steps)
+  * [Auto Profiles](#auto-profiles)
 * [Stage-Wise Evaluation](#stage-wise-evaluation)
+  * [How to Run Evaluation](#how-to-run-evaluation)
+  * [Evaluated Stages](#evaluated-stages)
+  * [Supported Reference Formats](#supported-reference-formats)
 * [Output Files](#output-files)
 * [Carbon Tracking](#carbon-tracking)
+* [Repository Structure](#repository-structure)
+* [Credits](*credits)
 
----
 
 ## Installation
 <details>
 <!-- ###  -->
 <summary>  <strong> Make Shortcuts (Recommended)</strong> </summary>
 
-```bash
-git clone https://github.com/haraldsr/Speech_VAD_Diarization_Transcription.git
-cd Speech_VAD_Diarization_Transcription
-make install         # Auto-detects GPU/CPU and installs from lockfile
-```
+  ```bash
+  git clone https://github.com/haraldsr/Speech_VAD_Diarization_Transcription.git
+  cd Speech_VAD_Diarization_Transcription
+  make install         # Auto-detects GPU/CPU and installs from lockfile
+  ```
+  <ul>
+  <details>
+   <summary> Other make shortcuts:</summary>
+   
+   ```bash
+   make install-dev     # Install from requirements.txt (for development/testing)
+   make install-conda   # Full Conda install (slower, no UV)
+   # For maintainers (creating lockfiles)
+   make gen-lock        # Auto-detects GPU and names the lockfile accordingly
+   ```
+ </details>
 
-
-  
-<details>
-<summary> Other make shortcuts:</summary>
-
-```bash
-make install-dev     # Install from requirements.txt (for development/testing)
-make install-conda   # Full Conda install (slower, no UV)
-```
-
-**For maintainers (creating lockfiles):**
-
-```bash
-make gen-lock        # Auto-detects GPU and names the lockfile accordingly
-```
-
-</details>
 
 </details>
 
@@ -122,7 +123,6 @@ uv pip install -r requirements-lock-uv-cpu.txt  # or requirements-lock-uv-gpu.tx
 pip install -e .
 ```
 </details>
-
 
 
 ## Quick Start
@@ -227,7 +227,8 @@ python conversation_pipeline.py
 ```
 </details>
 
-## Key Parameters
+## Pipeline
+### Key Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -240,16 +241,51 @@ python conversation_pipeline.py
 | `whisper_device` | `"auto"` | `"auto"`, `"cuda"`, or `"cpu"` |
 | `batch_size` | `30.0` | Batch size in seconds |
 | `skip_vad_if_exists` | `False` | Skip VAD/diarization if `combined_vad.txt` already exists |
+| `metadata_gen` | `[]` | Traits that requires to generate through audio file for metadata |
 | `preprocess_audio_enabled` | `False` | Apply audio enhancement before VAD and transcription |
 | `export_elan` | `True` | Export tab-delimited file for annotation software |
 
 
-## Audio Preprocessing / Speech Enhancement
+ 
+### Speaker Traits Metadata (optional)
+#### How to include metadata
+  
+  <details>
+  <summary>  <strong> Graphical Interface (GUI) </strong> </summary>
+  
+  Open the **Metadata Configuration** expander to select either:
+  
+  * **Skip Metadata:** Skips generating any metadata.
+  * **Generating for Metadata:** Select from `Age/Sex`, `Emotion Category`, or `Emotion Dimension` to automatically generate speaker profile metadata.
+    
+   <!--  * **Use Existing Metadata**: Skip preprocess and use original audio -->
+  </details>
+  
+  <details>
+  <summary>  <strong> Inline Configuration During Pipeline Run </strong> </summary>
+   
+   > features are powered by [VoxProfile](https://huggingface.co/collections/tiantiaf/vox-profile) framework. Complete usage examples can also be found in the repository under `src/voxprofile/src/example/`.
+  ```python
+  # Generate Age/Sex(age_sex), Emotion Category(emotion_cat), and Emotion Dimension(emotion_dim)
+   process_conversation(metadata_gen=["age_sex", "emotion_cat", "emotion_dim"], # Enable specific VoxProfile features
+           # Explicitly specify the HuggingFace models
+           SER_model_name = "tiantiaf/wavlm-large-categorical-emotion",
+           emo_dim_model_name = "tiantiaf/wavlm-large-msp-podcast-emotion-dim",
+           agesex_model_name = "tiantiaf/wavlm-large-age-sex",
+           ...)
+  
+  ```
+  
+  </details>
+
+
+
+### Audio Preprocessing / Speech Enhancement
 
 The pipeline includes an optional audio preprocessing step that applies adaptive signal conditioning before VAD and transcription. This can significantly improve downstream quality, especially for recordings with low volume, background noise, or DC offset.
 
 
-### How to Enable Preprocessing
+#### How to Enable Preprocessing
 
 <details>
 <summary>  <strong> Graphical Interface (GUI) </strong> </summary>
@@ -339,8 +375,7 @@ out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig(
 
 
 
-### Processing Steps
-> \[!Note]
+#### Processing Steps
 > Preprocessed files are saved to `output_dir/preprocessed/` with an `_enhanced` suffix. All downstream pipeline stages (VAD, energy filtering, transcription) automatically use the enhanced audio.
 
 | Step | What it does | Adaptive? |
@@ -351,7 +386,7 @@ out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig(
 | **Peak limiter** | Hard-clips to 0.95 to prevent clipping after gain | Always applied after gain |
 
 
-### Auto Profiles
+#### Auto Profiles
 
 <details>
 <summary>  <strong> auto_profile API Example </strong> </summary>
@@ -376,12 +411,13 @@ print(f"Selected profile: {profile_name}")
 | **noisy** | LUFS < -35 *or* SNR < 18 dB | Aggressive noise reduction (0.95), tighter loudness tolerance |
 
 
-## Stage-Wise Evaluation
+ 
+### Stage-Wise Evaluation
 
 The pipeline includes evaluation metrics for each processing stage, built on top of [`pyannote.metrics`](https://github.com/pyannote/pyannote-audio) and [`jiwer`](https://github.com/jitsi/jiwer). These are independent of the existing turn-taking dynamics evaluator in `compute_turn_errors.py`.
 
 
-### How to Run Evaluation
+#### How to Run Evaluation
 >  💡 **Note:** Check [Reference formats](#supported-reference-formats) to see supported formats before running an evaluation
 
 <details>
@@ -492,7 +528,7 @@ results = process_conversation(
   ```
 </details>
 
-### Evaluated Stages
+#### Evaluated Stages
 
 | Stage | Metrics | Library |
 |-------|---------|---------|
@@ -502,7 +538,7 @@ results = process_conversation(
 | **Transcription** | WER, CER, MER, WIL, WIP, BLEU, Semantic Distance/Similarity (raw + normalised), edit counts (S/D/I/H) — uses many-to-many time alignment | jiwer, sacrebleu, transformers |
 | **Label Type** | Per-class P/R/F1, Macro F1, confusion matrix | built-in |
 
-### Supported Reference Formats
+#### Supported Reference Formats
 
 References are auto-detected but can be overridden with `--ref-fmt`:
 
@@ -515,7 +551,8 @@ References are auto-detected but can be overridden with `--ref-fmt`:
 | `pipeline_output` | Pipeline's own `final_labels.txt` | `outputs/*/final_labels.txt` |
 
 
-## Output Files
+ 
+### Output Files
 
 ![Output Structure](docs/figures/Protocol-2.png)
 *Each speaker track consists of discrete, timestamped speech intervals (Turns or Backchannels).*
@@ -609,8 +646,9 @@ P2_backchannel	2450	3100	Mm-hmm
 To import in ELAN: **File → Import → Tab-delimited Text...** (skip first line: Yes)
 </details>
 
-
-## Carbon Tracking
+ Carbon Tracking
+ 
+### Carbon Tracking
 
 The pipeline optionally integrates [CarbonTracker](https://github.com/lfwa/carbontracker) for monitoring energy consumption and CO₂ emissions during processing.
 
@@ -629,7 +667,12 @@ export ELECTRICITYMAPS_API_KEY="your-api-key"
 Logs are saved to `logs/carbon/`. See `conversation_pipeline.py` for configuration options including CPU TDP simulation for systems without direct power measurement.
 
 
----
+
+
+## Upload
+
+## Annotation
+
 
 ## Repository Structure
 
@@ -666,44 +709,18 @@ Logs are saved to `logs/carbon/`. See `conversation_pipeline.py` for configurati
     └── compute_turn_errors.py    # Turn-taking dynamics evaluator
 ```
 
----
 
-## Development
-
-### Make Commands
-
-```bash
-make help          # Show all available commands
-make install       # Install with hybrid approach (recommended)
-make install-dev   # Install from requirements.txt (development)
-make install-conda # Install with Conda/Mamba only
-make gen-lock      # Generate lockfile from active environment
-make lint          # Run linting (flake8, mypy, isort, black)
-make format        # Format code (isort + black)
-make clean         # Remove build artifacts
-```
-
-### View Installed Packages
-```bash
-pip list
-conda list  # If using conda
-```
-
-### Update Environment to Match Working Setup
-```bash
-# Generate a lockfile from the active environment (use make gen-lock instead)
-conda activate vdt
-make gen-lock
-
-# Then apply to another environment
-conda activate other_env
-uv pip install -r requirements-lock-uv-gpu.txt --upgrade  # or requirements-lock-uv-cpu.txt
-```
+## Development & Troubleshooting
+See the [Debug Documentation](Debug.md) for more details on resolving common environment and runtime errors.
 
 ---
+**TODO:**
+- [ ] CLI command for metadata profiling
+- [ ] Implement uploading exisiting metadata and combine through pipeline
 
+---
 ## Credits
-
+- **Vox-Profile**: https://github.com/tiantiaf0627/vox-profile-release
 - **Pyannote.audio**: https://github.com/pyannote/pyannote-audio
 - **SpeechBrain**: https://speechbrain.github.io/
 - **Whisper**: https://github.com/openai/whisper
@@ -711,10 +728,12 @@ uv pip install -r requirements-lock-uv-gpu.txt --upgrade  # or requirements-lock
 - **UV**: https://github.com/astral-sh/uv
 - **CarbonTracker**: https://github.com/lfwa/carbontracker
 
----
 
+<hr>
+      
 ## License
-
-**TODO: Temporary** - All Rights Reserved - Copyright (c) 2025 Harald Skat-Rørdam, Hanlu He
+All Rights Reserved - Copyright (c) 2026 Ting-Hui Cheng, Harald Skat-Rørdam, Hanlu He
 
 No license is currently granted for use, modification, or distribution of this software. An open-source license will be applied once determined by the copyright holders. See [LICENSE](LICENSE) file for details.
+
+
