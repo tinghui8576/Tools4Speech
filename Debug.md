@@ -1,3 +1,34 @@
+## Development
+
+### Make Commands
+
+```bash
+make help          # Show all available commands
+make install       # Install with hybrid approach (recommended)
+make install-dev   # Install from requirements.txt (development)
+make install-conda # Install with Conda/Mamba only
+make gen-lock      # Generate lockfile from active environment
+make lint          # Run linting (flake8, mypy, isort, black)
+make format        # Format code (isort + black)
+make clean         # Remove build artifacts
+```
+
+### View Installed Packages
+```bash
+pip list
+conda list  # If using conda
+```
+
+### Update Environment to Match Working Setup
+```bash
+# Generate a lockfile from the active environment (use make gen-lock instead)
+conda activate vdt
+make gen-lock
+
+# Then apply to another environment
+conda activate other_env
+uv pip install -r requirements-lock-uv-gpu.txt --upgrade  # or requirements-lock-uv-cpu.txt
+```
 
 ## Troubleshooting
 
