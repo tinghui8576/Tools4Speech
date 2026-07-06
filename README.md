@@ -22,6 +22,20 @@ A semi-automatic annotation pipeline for converting conversational audio recordi
 
 ---
 -->
+
+## Table of Contents
+* [Installation](#installation)
+* [Quick Start](#quick-start)
+* [Key Parameters](#key-parameters)
+* [Audio Preprocessing / Speech Enhancement](#audio-preprocessing--speech-enhancement)
+  * [How to Enable Preprocessing](#how-to-enable-preprocessing)
+  * 
+* [Stage-Wise Evaluation](#stage-wise-evaluation)
+* [Output Files](#output-files)
+* [Carbon Tracking](#carbon-tracking)
+
+---
+
 ## Installation
 <details>
 <!-- ###  -->
@@ -113,7 +127,10 @@ pip install -e .
 
 ## Quick Start
 
-### Streamlit GUI
+<details>
+<!-- ###  -->
+<summary>  <strong> Streamlit GUI </strong> </summary>
+
 
 The easiest way to run the pipeline is via the interactive web interface:
 
@@ -137,50 +154,12 @@ The GUI supports:
     - **Exisiting file mode**: upload exisiting transcription label file (`.txt` or `.csv` or `.tsv`) [optional metadata file (`.txt` or `.csv` or `.tsv`)
     - **Mapping toolkit cols**: Mapping exisiting into predefine attributes
 - **Annotation**   
+</details>
 
-### CLI example
-> \[!Note]
-> Check for complete examples with different configurations.
-```bash
-# Generate result from start to end with the bundled recordings under `demo/audio/`. Override the paths or build your own CLI by importing the package API directly.
-python conversation_pipeline.py 
-
-# Single pair — reference vs hypothesis
-python scripts/evaluate.py \
-    --ref examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt \
-  --hyp outputs/dyad/final_labels.txt \
-  --plot
-
-# Point at output directory (auto-finds final_labels.txt)
-python scripts/evaluate.py \
-    --ref examples/all_files/EXP10_NoiseP1_T1.txt \
-  --output-dir outputs/test \
-  --plot --plot-format pdf
-
-# Select specific stages and collar
-python scripts/evaluate.py \
-    --ref ref.txt --hyp hyp.txt \
-    --stages vad diarization \
-    --collar 0.5
-
-# Batch mode (tab-separated ref<TAB>hyp file)
-python scripts/evaluate.py --batch-file eval_pairs.txt --json results.json
-
-# Control plot output location and quality
-python scripts/evaluate.py \
-  --ref ref.txt --hyp hyp.txt \
-  --plot --plot-dir figures --plot-format png --plot-dpi 200
-
-# Default plotting format is PDF (no DPI needed)
-python scripts/evaluate.py \
-  --ref ref.txt --hyp hyp.txt \
-  --plot
-```
-
-### Python API
-
-#### Pre-separated Audio (Dyad/Triad)
-
+<details id="python-api-docs">
+<summary>  <strong> Python API </strong> </summary>
+  
+#### Pre-separated Audio (Dyad/Triad) <a name="pre-separated-audio"></a>
 ```python
 from speech_vad_diarization_transcription import process_conversation
 
@@ -206,13 +185,10 @@ results = process_conversation(
 )
 ```
 
-
-
-### Single Mixed Audio (Diarization)
-
-Requires a HuggingFace token with access to pyannote models. Set via:
-- Environment variable: `export HF_TOKEN="your-token"`
-- Or login: `huggingface-cli login`
+#### Single Mixed Audio (Diarization)
+> Requires a HuggingFace token with access to pyannote models. Set via:
+> - Environment variable: `export HF_TOKEN="your-token"`
+> - Or login: `huggingface-cli login`
 
 ```python
 # Single file with multiple speakers - uses pyannote diarization
@@ -223,20 +199,33 @@ results = process_conversation(
     auth_token=os.environ.get("HF_TOKEN"),  # Or None if logged in via CLI
 )
 ```
+#### Speaker Separation + Pipeline
 
-### Speaker Separation + Pipeline
-
-For mixed audio with overlapping speakers, first separate with SepFormer:
-
+> For mixed audio with overlapping speakers, must first separate with SepFormer <br>
+> 💡 **Note:** Once the audio is split, pass the resulting tracks into the main pipeline. See the [Pre-separated Audio](#pre-separated-audio) section above for a full guide on using `process_conversation()`.
 ```python
 # See run_separation_and_pipeline.py for complete example
 from speech_separation_chunked import separator, separate_audio_with_smart_chunking
 model = separator.from_hparams(source="speechbrain/sepformer-wsj02mix")
 separated = separate_audio_with_smart_chunking(model, "mixed.wav")
-# Then use process_conversation() with separated audio paths
+# Feed the output paths directly into the process_conversation function
+# results = process_conversation(speakers_audio=separated_paths, ...)
 ```
+</details>
 
----
+
+
+<details>
+<!-- ###  -->
+<summary>  <strong> CLI example </strong> </summary>
+
+> 💡 **Note:** Check next section ([Python API Configuration](#python-api-docs)) for complete examples with different configurations.
+```bash
+# Generate result from start to end with the bundled recordings under `demo/audio/`. Override the paths or build your own CLI by importing the package API directly.
+python conversation_pipeline.py 
+
+```
+</details>
 
 ## Key Parameters
 
@@ -254,7 +243,277 @@ separated = separate_audio_with_smart_chunking(model, "mixed.wav")
 | `preprocess_audio_enabled` | `False` | Apply audio enhancement before VAD and transcription |
 | `export_elan` | `True` | Export tab-delimited file for annotation software |
 
----
+
+## Audio Preprocessing / Speech Enhancement
+
+The pipeline includes an optional audio preprocessing step that applies adaptive signal conditioning before VAD and transcription. This can significantly improve downstream quality, especially for recordings with low volume, background noise, or DC offset.
+
+
+### How to Enable Preprocessing
+
+<details>
+<summary>  <strong> Graphical Interface (GUI) </strong> </summary>
+Open the <strong> Audio Preprocessing </strong> expander and can select either:
+  
+  * **Single**: Applies uniform preprocessing across all audio tracks.
+  * **Dual**: Displays mild and strong profile pickers side-by-side, allowing you to use different preprocessing configurations tailored specifically for VAD and ASR tasks.
+  * **Skip**: Skip preprocess and use original audio
+</details>
+
+<details>
+<summary>  <strong> Python API Configuration </strong> </summary>
+  
+* **Simple flag — uses default settings (recommended starting point)**
+  ```python
+  results = process_conversation(
+      speakers_audio={"P1": "p1.wav", "P2": "p2.wav"},
+      output_dir="outputs/dyad",
+      preprocess_audio_enabled=True,
+  )
+  ```
+
+* **Fine-grained control via PreprocessConfig**
+  ```python
+  from speech_vad_diarization_transcription import PreprocessConfig
+  
+  config = PreprocessConfig(
+      enabled=True,
+      highpass=True,          # remove DC offset and rumble (<60 Hz)
+      highpass_freq=60.0,
+      noise_reduce=True,      # spectral gating noise reduction
+      noise_reduce_stationary=True,
+      noise_reduce_prop_decrease=0.8,
+      loudness_norm=True,     # EBU R 128 loudness normalisation
+      target_lufs=-23.0,
+      auto_loudness=True,     # only normalise if off by >3 dB
+      peak_limit=True,        # prevent clipping after gain
+      peak_ceiling=0.95,
+  )
+  
+  results = process_conversation(
+      speakers_audio={"P1": "p1.wav", "P2": "p2.wav"},
+      output_dir="outputs/dyad",
+      preprocess_config=config,
+  )
+  ```
+  
+* **Dual-Output Mode** <br>
+  For best results on noisy recordings, use `dual_preprocess()` to produce two versions of the audio — a **mild** version for diarization/VAD (sensitive to noise-reduction artefacts) and a **strong** version for ASR transcription:
+  ```python
+  from speech_vad_diarization_transcription import dual_preprocess
+  
+  paths = dual_preprocess("recording.wav", "output/")
+  # paths = {"mild": "output/preprocessed/recording_mild.wav",
+  #          "strong": "output/preprocessed/recording_strong.wav"}
+  ```
+  Or pass both configs directly to `process_conversation` to let the pipeline handle it:
+  ```python
+  from speech_vad_diarization_transcription import PreprocessConfig
+  
+  results = process_conversation(
+      speakers_audio="recording.wav",
+      output_dir="outputs/diarized",
+      vad_type="pyannote",
+      preprocess_config_mild=PreprocessConfig(enabled=True, noise_reduce_prop_decrease=0.5),
+      preprocess_config_strong=PreprocessConfig(enabled=True, noise_reduce_prop_decrease=0.9),
+  )
+  ```
+</details>
+
+<details>
+<summary>  <strong> Standalone Usage </strong> </summary>
+
+```python
+from speech_vad_diarization_transcription import preprocess_audio, PreprocessConfig, analyse_audio
+import soundfile as sf
+
+# Analyse audio properties
+audio, sr = sf.read("recording.wav", dtype="float32")
+stats = analyse_audio(audio, sr)
+print(f"LUFS: {stats['lufs']}, SNR: {stats.get('snr_estimate_db')} dB")
+
+# Preprocess
+out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig())
+```
+</details>
+
+
+
+### Processing Steps
+> \[!Note]
+> Preprocessed files are saved to `output_dir/preprocessed/` with an `_enhanced` suffix. All downstream pipeline stages (VAD, energy filtering, transcription) automatically use the enhanced audio.
+
+| Step | What it does | Adaptive? |
+|------|-------------|-----------|
+| **High-pass filter** | Butterworth 5th-order HPF removes DC offset and low-frequency rumble | Cut-off frequency configurable |
+| **Noise reduction** | Spectral gating reduces stationary background noise | Noise profile estimated from quietest frames |
+| **Loudness normalisation** | Targets -23 LUFS (EBU R 128 broadcast standard) | Skipped if already within tolerance |
+| **Peak limiter** | Hard-clips to 0.95 to prevent clipping after gain | Always applied after gain |
+
+
+### Auto Profiles
+
+<details>
+<summary>  <strong> auto_profile API Example </strong> </summary>
+
+The `auto_profile()` function analyses the input audio and selects an appropriate preprocessing intensity automatically:
+
+```python
+from speech_vad_diarization_transcription import auto_profile
+import soundfile as sf
+
+audio, sr = sf.read("recording.wav", dtype="float32")
+profile_name, config = auto_profile(audio, sr)
+# profile_name is one of: "clean", "moderate", "noisy"
+print(f"Selected profile: {profile_name}")
+```
+</details>
+
+| Profile | Condition | Behaviour |
+|---------|-----------|-----------|
+| **clean** | LUFS > -26 *and* SNR > 25 dB | HPF + gentle loudness norm only |
+| **moderate** | Neither clean nor noisy | Standard 4-stage pipeline |
+| **noisy** | LUFS < -35 *or* SNR < 18 dB | Aggressive noise reduction (0.95), tighter loudness tolerance |
+
+
+## Stage-Wise Evaluation
+
+The pipeline includes evaluation metrics for each processing stage, built on top of [`pyannote.metrics`](https://github.com/pyannote/pyannote-audio) and [`jiwer`](https://github.com/jitsi/jiwer). These are independent of the existing turn-taking dynamics evaluator in `compute_turn_errors.py`.
+
+
+### How to Run Evaluation
+>  💡 **Note:** Check [Reference formats](#supported-reference-formats) to see supported formats before running an evaluation
+
+<details>
+<summary>  <strong> Graphical Interface (GUI) </strong> </summary>
+Open the <strong> Evaluation </strong> expander and upload reference file
+
+</details>
+
+<details>
+<summary>  <strong> Python API </strong> </summary>
+  
+```python
+from speech_vad_diarization_transcription import (
+    evaluate_pipeline,
+    evaluate_vad,
+    evaluate_diarization,
+    evaluate_segmentation,
+    evaluate_transcription,
+    evaluate_label_type,
+    load_reference,
+    print_evaluation_summary,
+    plot_evaluation_results,
+    plot_evaluation_json,
+)
+
+# Load and evaluate individual stages
+ref = load_reference("ground_truth.txt")
+hyp = load_reference("outputs/final_labels.txt")
+
+vad_results = evaluate_vad(ref, hyp, collar=0.25)
+diar_results = evaluate_diarization(ref, hyp)
+seg_results = evaluate_segmentation(ref, hyp)
+asr_results = evaluate_transcription(ref, hyp)
+type_results = evaluate_label_type(ref, hyp)
+
+# Plot directly from in-memory results
+all_results = evaluate_pipeline("ground_truth.txt", "outputs/final_labels.txt")
+plot_evaluation_results(all_results, output_dir="outputs")
+
+# Or from an existing JSON file
+plot_evaluation_json("outputs/evaluation_metrics.json")
+```
+
+</details>
+
+<details>
+<summary>  <strong> Inline Configuration During Pipeline Run</strong> </summary>
+
+Pass a ground-truth reference file to `process_conversation` to evaluate at the end of the run:
+
+```python
+results = process_conversation(
+    speakers_audio={"P1": "speaker1.wav", "P2": "speaker2.wav"},
+    output_dir="outputs/dyad",
+    vad_type="silero",
+    # Evaluation parameters
+    evaluate_ref_path="examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt",
+    evaluate_stages=["vad", "diarization", "segmentation", "label_type"],  # or None for all
+    evaluate_collar=0.25,
+    evaluate_plot=True,            # optional: generate evaluation plots
+    evaluate_plot_format="pdf",   # default: png (png | pdf | svg)
+)
+# Metrics are printed and saved to outputs/dyad/evaluation_metrics.json
+# Plots are saved to outputs/dyad/evaluation_kpi.pdf
+# Also available via results["evaluation"]
+```
+</details>
+
+<details>
+<summary>  <strong> Standalone CLI Evaluation </strong> </summary>
+  
+* **Single pair — reference vs hypothesis**
+    ```bash
+  python scripts/evaluate.py \
+      --ref examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt \
+      --hyp outputs/dyad/final_labels.txt \
+      --plot
+    ```
+* **Point at output directory (auto-finds final_labels.txt)**
+    ```bash
+    python scripts/evaluate.py \
+        --ref examples/all_files/EXP10_NoiseP1_T1.txt \
+        --output-dir outputs/test \
+        --plot --plot-format pdf
+    ```
+* **Select specific stages and collar**
+    ```bash
+    python scripts/evaluate.py \
+        --ref ref.txt --hyp hyp.txt \
+        --stages vad diarization \
+        --collar 0.5
+    ```
+* **Batch mode (tab-separated ref<TAB>hyp file)**
+    ```bash
+    python scripts/evaluate.py --batch-file eval_pairs.txt --json results.json
+    ```
+* **Control plot output location and quality**
+    ```bash 
+    python scripts/evaluate.py \
+        --ref ref.txt --hyp hyp.txt \
+        --plot --plot-dir figures --plot-format png --plot-dpi 200
+    ```
+* **Default plotting format is PDF (no DPI needed)**
+  ```bash 
+  python scripts/evaluate.py \
+      --ref ref.txt --hyp hyp.txt \
+      --plot
+  ```
+</details>
+
+### Evaluated Stages
+
+| Stage | Metrics | Library |
+|-------|---------|---------|
+| **VAD** | Detection Error Rate, Detection Accuracy, Precision, Recall, F1, Onset/Offset MAE | pyannote.metrics |
+| **Diarization** | DER (+ miss/FA/confusion), Greedy DER, JER, Purity, Coverage, Homogeneity, Completeness, IER (+ P/R), Speaker Detection Accuracy, Speaker ID Accuracy (mapped *and* raw) | pyannote.metrics, scipy |
+| **Segmentation** | Purity, Coverage, Precision, Recall, F-measure | pyannote.metrics |
+| **Transcription** | WER, CER, MER, WIL, WIP, BLEU, Semantic Distance/Similarity (raw + normalised), edit counts (S/D/I/H) — uses many-to-many time alignment | jiwer, sacrebleu, transformers |
+| **Label Type** | Per-class P/R/F1, Macro F1, confusion matrix | built-in |
+
+### Supported Reference Formats
+
+References are auto-detected but can be overridden with `--ref-fmt`:
+
+| Format | Description | Example |
+|--------|-------------|---------|
+| `exp5` | 5-column TSV: `speaker start end dur type` | `examples/all_files/EXP10_*.txt` |
+| `exp6` | 6-column TSV with blank field | `examples/Dyad/*/EXP*_Hanlu.txt` |
+| `elan` | ELAN tab-delimited: `tier begin end annotation` | `examples/coral/*_elan.txt` |
+| `rttm` | NIST RTTM (standard diarization format) | — |
+| `pipeline_output` | Pipeline's own `final_labels.txt` | `outputs/*/final_labels.txt` |
+
 
 ## Output Files
 
@@ -275,188 +534,21 @@ outputs/
     └── final_labels_elan.txt          # ELAN-compatible format
 ```
 
-**Pipeline output format (`final_labels.txt`):**
+<details>
+<summary>  <strong> Pipeline output format (`final_labels.txt`):</strong> </summary>
+
 ```
 speaker	start_sec	end_sec	transcription	entropy	type
 P1	0.50	2.30	Hello there	2.31	turn
 P2	2.45	3.10	Mm-hmm	0.00	backchannel
 ```
+</details> 
 
-**ELAN import format (`final_labels_elan.txt`):**
-```
-tier	begin	end	annotation
-P1_turn	500	2300	Hello there
-P2_backchannel	2450	3100	Mm-hmm
-```
 
-To import in ELAN: **File → Import → Tab-delimited Text...** (skip first line: Yes)
 
----
 
-## Audio Preprocessing / Speech Enhancement
-
-The pipeline includes an optional audio preprocessing step that applies adaptive signal conditioning before VAD and transcription. This can significantly improve downstream quality, especially for recordings with low volume, background noise, or DC offset.
-
-### Enabling Preprocessing
-
-```python
-# Simple flag — uses default settings (recommended starting point)
-results = process_conversation(
-    speakers_audio={"P1": "p1.wav", "P2": "p2.wav"},
-    output_dir="outputs/dyad",
-    preprocess_audio_enabled=True,
-)
-
-# Fine-grained control via PreprocessConfig
-from speech_vad_diarization_transcription import PreprocessConfig
-
-config = PreprocessConfig(
-    enabled=True,
-    highpass=True,          # remove DC offset and rumble (<60 Hz)
-    highpass_freq=60.0,
-    noise_reduce=True,      # spectral gating noise reduction
-    noise_reduce_stationary=True,
-    noise_reduce_prop_decrease=0.8,
-    loudness_norm=True,     # EBU R 128 loudness normalisation
-    target_lufs=-23.0,
-    auto_loudness=True,     # only normalise if off by >3 dB
-    peak_limit=True,        # prevent clipping after gain
-    peak_ceiling=0.95,
-)
-
-results = process_conversation(
-    speakers_audio={"P1": "p1.wav", "P2": "p2.wav"},
-    output_dir="outputs/dyad",
-    preprocess_config=config,
-)
-```
-
-### Processing Steps
-
-| Step | What it does | Adaptive? |
-|------|-------------|-----------|
-| **High-pass filter** | Butterworth 5th-order HPF removes DC offset and low-frequency rumble | Cut-off frequency configurable |
-| **Noise reduction** | Spectral gating reduces stationary background noise | Noise profile estimated from quietest frames |
-| **Loudness normalisation** | Targets -23 LUFS (EBU R 128 broadcast standard) | Skipped if already within tolerance |
-| **Peak limiter** | Hard-clips to 0.95 to prevent clipping after gain | Always applied after gain |
-
-Preprocessed files are saved to `output_dir/preprocessed/` with an `_enhanced` suffix. All downstream pipeline stages (VAD, energy filtering, transcription) automatically use the enhanced audio.
-
-### Standalone Usage
-
-```python
-from speech_vad_diarization_transcription import preprocess_audio, PreprocessConfig, analyse_audio
-import soundfile as sf
-
-# Analyse audio properties
-audio, sr = sf.read("recording.wav", dtype="float32")
-stats = analyse_audio(audio, sr)
-print(f"LUFS: {stats['lufs']}, SNR: {stats.get('snr_estimate_db')} dB")
-
-# Preprocess
-out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig())
-```
-
-### Auto Profiles
-
-The `auto_profile()` function analyses the input audio and selects an appropriate preprocessing intensity automatically:
-
-```python
-from speech_vad_diarization_transcription import auto_profile
-import soundfile as sf
-
-audio, sr = sf.read("recording.wav", dtype="float32")
-profile_name, config = auto_profile(audio, sr)
-# profile_name is one of: "clean", "moderate", "noisy"
-print(f"Selected profile: {profile_name}")
-```
-
-| Profile | Condition | Behaviour |
-|---------|-----------|-----------|
-| **clean** | LUFS > -26 *and* SNR > 25 dB | HPF + gentle loudness norm only |
-| **moderate** | Neither clean nor noisy | Standard 4-stage pipeline |
-| **noisy** | LUFS < -35 *or* SNR < 18 dB | Aggressive noise reduction (0.95), tighter loudness tolerance |
-
-### Dual-Output Mode
-
-For best results on noisy recordings, use `dual_preprocess()` (or enable **Dual** mode in the GUI) to produce two versions of the audio — a **mild** version for diarization/VAD (sensitive to noise-reduction artefacts) and a **strong** version for ASR transcription:
-
-```python
-from speech_vad_diarization_transcription import dual_preprocess
-
-paths = dual_preprocess("recording.wav", "output/")
-# paths = {"mild": "output/preprocessed/recording_mild.wav",
-#          "strong": "output/preprocessed/recording_strong.wav"}
-```
-
-Or pass both configs directly to `process_conversation` to let the pipeline handle it:
-
-```python
-from speech_vad_diarization_transcription import PreprocessConfig
-
-results = process_conversation(
-    speakers_audio="recording.wav",
-    output_dir="outputs/diarized",
-    vad_type="pyannote",
-    preprocess_config_mild=PreprocessConfig(enabled=True, noise_reduce_prop_decrease=0.5),
-    preprocess_config_strong=PreprocessConfig(enabled=True, noise_reduce_prop_decrease=0.9),
-)
-```
-
-In the GUI, open the **Audio Preprocessing** expander and select **Dual** as the preprocessing mode. A mild and strong profile picker will appear side by side.
-
----
-
-## Stage-Wise Evaluation
-
-The pipeline includes evaluation metrics for each processing stage, built on top of [`pyannote.metrics`](https://github.com/pyannote/pyannote-audio) and [`jiwer`](https://github.com/jitsi/jiwer). These are independent of the existing turn-taking dynamics evaluator in `compute_turn_errors.py`.
-
-### Evaluated Stages
-
-| Stage | Metrics | Library |
-|-------|---------|---------|
-| **VAD** | Detection Error Rate, Detection Accuracy, Precision, Recall, F1, Onset/Offset MAE | pyannote.metrics |
-| **Diarization** | DER (+ miss/FA/confusion), Greedy DER, JER, Purity, Coverage, Homogeneity, Completeness, IER (+ P/R), Speaker Detection Accuracy, Speaker ID Accuracy (mapped *and* raw) | pyannote.metrics, scipy |
-| **Segmentation** | Purity, Coverage, Precision, Recall, F-measure | pyannote.metrics |
-| **Transcription** | WER, CER, MER, WIL, WIP, BLEU, Semantic Distance/Similarity (raw + normalised), edit counts (S/D/I/H) — uses many-to-many time alignment | jiwer, sacrebleu, transformers |
-| **Label Type** | Per-class P/R/F1, Macro F1, confusion matrix | built-in |
-
-### Inline Evaluation (during pipeline run)
-
-Pass a ground-truth reference file to `process_conversation` to evaluate at the end of the run:
-
-```python
-results = process_conversation(
-    speakers_audio={"P1": "speaker1.wav", "P2": "speaker2.wav"},
-    output_dir="outputs/dyad",
-    vad_type="silero",
-    # Evaluation parameters
-    evaluate_ref_path="examples/Dyad/EXP_12_T2/EXP12_T2_Hanlu.txt",
-    evaluate_stages=["vad", "diarization", "segmentation", "label_type"],  # or None for all
-    evaluate_collar=0.25,
-    evaluate_plot=True,            # optional: generate evaluation plots
-    evaluate_plot_format="pdf",   # default: png (png | pdf | svg)
-)
-# Metrics are printed and saved to outputs/dyad/evaluation_metrics.json
-# Plots are saved to outputs/dyad/evaluation_kpi.pdf
-# Also available via results["evaluation"]
-```
-
-### Supported Reference Formats
-
-References are auto-detected but can be overridden with `--ref-fmt`:
-
-| Format | Description | Example |
-|--------|-------------|---------|
-| `exp5` | 5-column TSV: `speaker start end dur type` | `examples/all_files/EXP10_*.txt` |
-| `exp6` | 6-column TSV with blank field | `examples/Dyad/*/EXP*_Hanlu.txt` |
-| `elan` | ELAN tab-delimited: `tier begin end annotation` | `examples/coral/*_elan.txt` |
-| `rttm` | NIST RTTM (standard diarization format) | — |
-| `pipeline_output` | Pipeline's own `final_labels.txt` | `outputs/*/final_labels.txt` |
-
-### Output
-
-Evaluation produces `evaluation_metrics.json` in the output directory:
+<details>
+<summary>  <strong> Evaluation output (`evaluation_metrics.json`):</strong> </summary>
 
 ```json
 {
@@ -503,42 +595,20 @@ Evaluation produces `evaluation_metrics.json` in the output directory:
   }
 }
 ```
+</details>
 
-### Programmatic API
+<details>
+<summary>  <strong> ELAN import format (`final_labels_elan.txt`):</strong> </summary>
 
-```python
-from speech_vad_diarization_transcription import (
-    evaluate_pipeline,
-    evaluate_vad,
-    evaluate_diarization,
-    evaluate_segmentation,
-    evaluate_transcription,
-    evaluate_label_type,
-    load_reference,
-    print_evaluation_summary,
-    plot_evaluation_results,
-    plot_evaluation_json,
-)
-
-# Load and evaluate individual stages
-ref = load_reference("ground_truth.txt")
-hyp = load_reference("outputs/final_labels.txt")
-
-vad_results = evaluate_vad(ref, hyp, collar=0.25)
-diar_results = evaluate_diarization(ref, hyp)
-seg_results = evaluate_segmentation(ref, hyp)
-asr_results = evaluate_transcription(ref, hyp)
-type_results = evaluate_label_type(ref, hyp)
-
-# Plot directly from in-memory results
-all_results = evaluate_pipeline("ground_truth.txt", "outputs/final_labels.txt")
-plot_evaluation_results(all_results, output_dir="outputs")
-
-# Or from an existing JSON file
-plot_evaluation_json("outputs/evaluation_metrics.json")
+```
+tier	begin	end	annotation
+P1_turn	500	2300	Hello there
+P2_backchannel	2450	3100	Mm-hmm
 ```
 
----
+To import in ELAN: **File → Import → Tab-delimited Text...** (skip first line: Yes)
+</details>
+
 
 ## Carbon Tracking
 
