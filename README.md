@@ -1,6 +1,6 @@
 # Tools4Speech - A Semi-Automatic Annotation Pipeline for Conversation Speech Dataset
 
-A semi-automatic annotation pipeline for converting conversational audio recordings into high-quality speech datasets for downstream speech applications, including Automatic Speech Recognition (ASR), Speaker Diarization, and Speech Emotion Recognition (SER). The pipeline supports both pre-separated speaker recordings and mixed conversational audio. Starting from raw audio, it generates transcriptions and can optionally produce metadata such as speaker identities, emotions, and other speaker-related information. It also provides an annotation interface that allows users to review, edit, and refine the automatically generated labels, enabling efficient human-in-the-loop annotation while reducing manual effort. The primary goal of Tools4Speech is to accelerate the creation of annotated conversational speech datasets, particularly for low-resource languages, by reducing manual annotation effort while maintaining high data quality.
+A semi-automatic annotation pipeline for converting conversational audio recordings into high-quality speech datasets for downstream speech applications, including Automatic Speech Recognition (ASR), [...]
 
 <!-- labels can optionally be exported to the user's annotation software of choice (e.g., ELAN) for manual review. -->
 
@@ -159,7 +159,7 @@ The GUI supports:
 <details id="python-api-docs">
 <summary>  <strong> Python API </strong> </summary>
   
-#### Pre-separated Audio (Dyad/Triad) <a name="pre-separated-audio"></a>
+#### *Pre-separated Audio (Dyad/Triad)* <a name="pre-separated-audio"></a>
 ```python
 from speech_vad_diarization_transcription import process_conversation
 
@@ -185,7 +185,7 @@ results = process_conversation(
 )
 ```
 
-#### Single Mixed Audio (Diarization)
+#### *Single Mixed Audio (Diarization)*
 > Requires a HuggingFace token with access to pyannote models. Set via:
 > - Environment variable: `export HF_TOKEN="your-token"`
 > - Or login: `huggingface-cli login`
@@ -199,10 +199,10 @@ results = process_conversation(
     auth_token=os.environ.get("HF_TOKEN"),  # Or None if logged in via CLI
 )
 ```
-#### Speaker Separation + Pipeline
+#### *Speaker Separation + Pipeline*
 
 > For mixed audio with overlapping speakers, must first separate with SepFormer <br>
-> 💡 **Note:** Once the audio is split, pass the resulting tracks into the main pipeline. See the [Pre-separated Audio](#pre-separated-audio) section above for a full guide on using `process_conversation()`.
+> 💡 **Note:** Once the audio is split, pass the resulting tracks into the main pipeline. See the [Pre-separated Audio](#pre-separated-audio) section above for a full guide on using `process_convers[...]
 ```python
 # See run_separation_and_pipeline.py for complete example
 from speech_separation_chunked import separator, separate_audio_with_smart_chunking
@@ -248,7 +248,7 @@ python conversation_pipeline.py
 
  
 ### Speaker Traits Metadata (optional)
-#### How to include metadata
+#### *How to include metadata*
   
   <details>
   <summary>  <strong> Graphical Interface (GUI) </strong> </summary>
@@ -258,13 +258,13 @@ python conversation_pipeline.py
   * **Skip Metadata:** Skips generating any metadata.
   * **Generating for Metadata:** Select from `Age/Sex`, `Emotion Category`, or `Emotion Dimension` to automatically generate speaker profile metadata.
     
-   <!--  * **Use Existing Metadata**: Skip preprocess and use original audio -->
+    <!--  * **Use Existing Metadata**: Skip preprocess and use original audio -->
   </details>
   
   <details>
   <summary>  <strong> Inline Configuration During Pipeline Run </strong> </summary>
    
-   > features are powered by [VoxProfile](https://huggingface.co/collections/tiantiaf/vox-profile) framework. Complete usage examples can also be found in the repository under `src/voxprofile/src/example/`.
+   > features are powered by [VoxProfile](https://huggingface.co/collections/tiantiaf/vox-profile) framework. Complete usage examples can also be found in the repository under `src/voxprofile/src/exam[...]
   ```python
   # Generate Age/Sex(age_sex), Emotion Category(emotion_cat), and Emotion Dimension(emotion_dim)
    process_conversation(metadata_gen=["age_sex", "emotion_cat", "emotion_dim"], # Enable specific VoxProfile features
@@ -282,10 +282,10 @@ python conversation_pipeline.py
 
 ### Audio Preprocessing / Speech Enhancement
 
-The pipeline includes an optional audio preprocessing step that applies adaptive signal conditioning before VAD and transcription. This can significantly improve downstream quality, especially for recordings with low volume, background noise, or DC offset.
+The pipeline includes an optional audio preprocessing step that applies adaptive signal conditioning before VAD and transcription. This can significantly improve downstream quality, especially for rec[...]
 
 
-#### How to Enable Preprocessing
+#### *How to Enable Preprocessing*
 
 <details>
 <summary>  <strong> Graphical Interface (GUI) </strong> </summary>
@@ -334,7 +334,7 @@ Open the <strong> Audio Preprocessing </strong> expander and can select either:
   ```
   
 * **Dual-Output Mode** <br>
-  For best results on noisy recordings, use `dual_preprocess()` to produce two versions of the audio — a **mild** version for diarization/VAD (sensitive to noise-reduction artefacts) and a **strong** version for ASR transcription:
+  For best results on noisy recordings, use `dual_preprocess()` to produce two versions of the audio — a **mild** version for diarization/VAD (sensitive to noise-reduction artefacts) and a **st[...]
   ```python
   from speech_vad_diarization_transcription import dual_preprocess
   
@@ -375,8 +375,8 @@ out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig(
 
 
 
-#### Processing Steps
-> Preprocessed files are saved to `output_dir/preprocessed/` with an `_enhanced` suffix. All downstream pipeline stages (VAD, energy filtering, transcription) automatically use the enhanced audio.
+#### *Processing Steps*
+> Preprocessed files are saved to `output_dir/preprocessed/` with an `_enhanced` suffix. All downstream pipeline stages (VAD, energy filtering, transcription) automatically use the enhanced audio[...]
 
 | Step | What it does | Adaptive? |
 |------|-------------|-----------|
@@ -386,7 +386,7 @@ out_path = preprocess_audio("recording.wav", "output/", config=PreprocessConfig(
 | **Peak limiter** | Hard-clips to 0.95 to prevent clipping after gain | Always applied after gain |
 
 
-#### Auto Profiles
+#### *Auto Profiles*
 
 <details>
 <summary>  <strong> auto_profile API Example </strong> </summary>
@@ -414,10 +414,10 @@ print(f"Selected profile: {profile_name}")
  
 ### Stage-Wise Evaluation
 
-The pipeline includes evaluation metrics for each processing stage, built on top of [`pyannote.metrics`](https://github.com/pyannote/pyannote-audio) and [`jiwer`](https://github.com/jitsi/jiwer). These are independent of the existing turn-taking dynamics evaluator in `compute_turn_errors.py`.
+The pipeline includes evaluation metrics for each processing stage, built on top of [`pyannote.metrics`](https://github.com/pyannote/pyannote-audio) and [`jiwer`](https://github.com/jitsi/jiwer). Thes[...]
 
 
-#### How to Run Evaluation
+#### *How to Run Evaluation*
 >  💡 **Note:** Check [Reference formats](#supported-reference-formats) to see supported formats before running an evaluation
 
 <details>
@@ -528,17 +528,17 @@ results = process_conversation(
   ```
 </details>
 
-#### Evaluated Stages
+#### *Evaluated Stages*
 
 | Stage | Metrics | Library |
 |-------|---------|---------|
 | **VAD** | Detection Error Rate, Detection Accuracy, Precision, Recall, F1, Onset/Offset MAE | pyannote.metrics |
-| **Diarization** | DER (+ miss/FA/confusion), Greedy DER, JER, Purity, Coverage, Homogeneity, Completeness, IER (+ P/R), Speaker Detection Accuracy, Speaker ID Accuracy (mapped *and* raw) | pyannote.metrics, scipy |
+| **Diarization** | DER (+ miss/FA/confusion), Greedy DER, JER, Purity, Coverage, Homogeneity, Completeness, IER (+ P/R), Speaker Detection Accuracy, Speaker ID Accuracy (mapped *and* raw) | pyan[...]
 | **Segmentation** | Purity, Coverage, Precision, Recall, F-measure | pyannote.metrics |
 | **Transcription** | WER, CER, MER, WIL, WIP, BLEU, Semantic Distance/Similarity (raw + normalised), edit counts (S/D/I/H) — uses many-to-many time alignment | jiwer, sacrebleu, transformers |
 | **Label Type** | Per-class P/R/F1, Macro F1, confusion matrix | built-in |
 
-#### Supported Reference Formats
+#### *Supported Reference Formats*
 
 References are auto-detected but can be overridden with `--ref-fmt`:
 
@@ -572,7 +572,7 @@ outputs/
 ```
 
 <details>
-<summary>  <strong> Pipeline output format (`final_labels.txt`):</strong> </summary>
+<summary>  <strong> *Pipeline output format* (`final_labels.txt`):</strong> </summary>
 
 ```
 speaker	start_sec	end_sec	transcription	entropy	type
@@ -585,7 +585,7 @@ P2	2.45	3.10	Mm-hmm	0.00	backchannel
 
 
 <details>
-<summary>  <strong> Evaluation output (`evaluation_metrics.json`):</strong> </summary>
+<summary>  <strong> *Evaluation output* (`evaluation_metrics.json`):</strong> </summary>
 
 ```json
 {
@@ -635,7 +635,7 @@ P2	2.45	3.10	Mm-hmm	0.00	backchannel
 </details>
 
 <details>
-<summary>  <strong> ELAN import format (`final_labels_elan.txt`):</strong> </summary>
+<summary>  <strong> *ELAN import format* (`final_labels_elan.txt`):</strong> </summary>
 
 ```
 tier	begin	end	annotation
@@ -646,9 +646,7 @@ P2_backchannel	2450	3100	Mm-hmm
 To import in ELAN: **File → Import → Tab-delimited Text...** (skip first line: Yes)
 </details>
 
- Carbon Tracking
- 
-### Carbon Tracking
+## Carbon Tracking
 
 The pipeline optionally integrates [CarbonTracker](https://github.com/lfwa/carbontracker) for monitoring energy consumption and CO₂ emissions during processing.
 
@@ -734,6 +732,5 @@ See the [Debug Documentation](Debug.md) for more details on resolving common env
 ## License
 All Rights Reserved - Copyright (c) 2026 Ting-Hui Cheng, Harald Skat-Rørdam, Hanlu He
 
-No license is currently granted for use, modification, or distribution of this software. An open-source license will be applied once determined by the copyright holders. See [LICENSE](LICENSE) file for details.
-
+No license is currently granted for use, modification, or distribution of this software. An open-source license will be applied once determined by the copyright holders. See [LICENSE](LICENSE) file for more information.
 
