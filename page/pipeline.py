@@ -1159,7 +1159,7 @@ def run_pipeline() -> None:
     # -----------------------------
     # METADATA SOURCE
     # -----------------------------
-    with st.expander("Metadata Generation Configuration", expanded=True):
+    with st.expander("Metadata Configuration", expanded=True):
         import pandas as pd
         
         left_col, right_col = st.columns([1, 1])
@@ -1169,8 +1169,8 @@ def run_pipeline() -> None:
             _metadata_source = st.radio(
                 "Metadata source",
                 [   
-                    "Skip Metadata Generation",
-                    "Run Models Automatically",
+                    "Skip Metadata",
+                    "Run Voxprofile for Metadata Generation",
                     "Use Existing Metadata",
 
                 ],
@@ -1196,7 +1196,11 @@ def run_pipeline() -> None:
 
                     st.success("Metadata loaded")
                 
-
+        METADATA_OPTIONS = {
+            "age_sex": "Age/Sex",
+            "emotion_cat": "Emotion Category",
+            "emotion_dim": "Emotion Dimensions"
+        }
         has_age = "age" in _existing_metadata
         has_sex = "sex" in _existing_metadata
         has_emocat = "emoCat" in _existing_metadata
@@ -1204,20 +1208,22 @@ def run_pipeline() -> None:
         has_valence = "valence" in _existing_metadata
         has_dominance = "dominance" in _existing_metadata
 
+        available = {
+            "age_sex": has_age and has_sex,
+            "emotion_cat": has_emocat,
+            "emotion_dim": has_arousal and has_valence and has_dominance
+        }
+        
         with right_col:
             if _metadata_source == "Use Existing Metadata":
                 st.write("Existing Metadata")
 
+                # Use METADATA_OPTIONS to dynamically fetch display names for the DataFrame
                 status_df = pd.DataFrame({
-                    "Metadata": [
-                        "Age/Sex",
-                        "Emotion Category",
-                        "Emotion Dimensions"
-                    ],
+                    "Metadata": [METADATA_OPTIONS[k] for k in METADATA_OPTIONS.keys()],
                     "Status": [
-                        "Available" if has_age and has_sex else "Missing",
-                        "Available" if has_emocat else "Missing",
-                        "Available" if has_arousal and has_valence and has_dominance else "Missing",
+                        "Available" if available[k] else "Missing" 
+                        for k in METADATA_OPTIONS.keys()
                     ]
                 })
 
@@ -1226,30 +1232,16 @@ def run_pipeline() -> None:
                     hide_index=True,
                     use_container_width=True
                 )
-
-        if _metadata_source != "Skip Metadata Generation":
-            available = {
-                "Age/Sex": has_age and has_sex,
-                "Emotion Category": has_emocat,
-                "Emotion Dimensions": (
-                    has_arousal and
-                    has_valence and
-                    has_dominance
-                )
-            }
+        if _metadata_source != "Skip Metadata":
             missing_options = [
-                name
-                for name, exists in available.items()
+                key for key, exists in available.items() 
                 if not exists
             ]
             generate_metadata = st.multiselect(
                 "Generate metadata",
-                [
-                    "Age/Sex",
-                    "Emotion Category",
-                    "Emotion Dimensions"
-                ],
-                default=missing_options
+                options=list(METADATA_OPTIONS.keys()),
+                default=missing_options,
+                format_func=lambda x: METADATA_OPTIONS[x]
             )
     
     # =========================================================================
@@ -1257,7 +1249,7 @@ def run_pipeline() -> None:
     # =========================================================================
     # Defaults — always defined so they're safe to reference in the run-button kwargs.
     preprocess_audio_enabled: bool = False
-    preprocess_config: Any = PreprocessConfig()
+    preprocess_config: Any = PreprocessConfig(enabled=preprocess_audio_enabled)
     preprocess_config_mild: Any = None
     preprocess_config_strong: Any = None
 
@@ -1269,7 +1261,7 @@ def run_pipeline() -> None:
         )
 
         # Compute per-speaker audio diagnostics
-        default_config = PreprocessConfig()
+        default_config = PreprocessConfig(enabled=preprocess_audio_enabled)
         auto_config = default_config
         all_speaker_stats: dict = (
             {}
@@ -1411,14 +1403,14 @@ def run_pipeline() -> None:
         st.subheader("Processing Profile")
         preprocess_mode = st.radio(
             "Preprocessing mode",
-            ["Dual", "Single"],
+            ["Dual", "Single", "Skip"],
             horizontal=True,
             help=(
                 "**Dual** (default): runs preprocessing twice — a *mild* version used for "
                 "VAD/diarization (preserving natural speaker characteristics) and a "
                 "*strong* version used for ASR transcription (maximising speech clarity). "
                 "Recommended for most recordings. **Single**: one preprocessing pass applied "
-                "uniformly to all audio."
+                "uniformly to all audio. **Skip**: skip all preprocessing steps using original audio."
             ),
         )
 
@@ -1465,7 +1457,7 @@ def run_pipeline() -> None:
 
             mild_col, strong_col = st.columns(2)
             with mild_col:
-                _, preprocess_config_mild = _render_preprocessing_profile(
+                preprocess_audio_enabled, preprocess_config_mild = _render_preprocessing_profile(
                     "mild_",
                     auto_config,
                     default_config,
@@ -1474,7 +1466,7 @@ def run_pipeline() -> None:
                     speaker_audio=_speaker_audio,
                 )
             with strong_col:
-                _, preprocess_config_strong = _render_preprocessing_profile(
+                preprocess_audio_enabled, preprocess_config_strong = _render_preprocessing_profile(
                     "strong_",
                     auto_config,
                     default_config,
@@ -1482,11 +1474,20 @@ def run_pipeline() -> None:
                     default_profile_key="noisy",
                     speaker_audio=_speaker_audio,
                 )
-        else:
+        elif preprocess_mode == "Single":
             # Single mode
             preprocess_audio_enabled, preprocess_config = _render_preprocessing_profile(
                 "", auto_config, default_config, speaker_audio=_speaker_audio
             )
+        else:
+            # Skip mode
+            st.info(
+                "Audio preprocessing is skipped. Original audio will be used for all stages."
+            )
+            preprocess_audio_enabled = False
+            preprocess_config = default_config
+            preprocess_config_mild = None
+            preprocess_config_strong = None
 
     # =========================================================================
     # EVALUATION (OPTIONAL)
@@ -1627,6 +1628,7 @@ def run_pipeline() -> None:
                     cleanup_preprocessed=cleanup_preprocessed,
                     min_duration_samples=float(min_duration_samples),
                     export_elan=export_elan,
+                    preprocess_audio_enabled=preprocess_audio_enabled,
                     preprocess_config=preprocess_config,
                     preprocess_config_mild=preprocess_config_mild,
                     preprocess_config_strong=preprocess_config_strong,

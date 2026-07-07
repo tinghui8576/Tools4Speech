@@ -708,7 +708,7 @@ def process_conversation(
 
     device = "auto"
     requested_metadata = {
-        "Age/Sex": {
+        "age_sex": {
             "loader": lambda: load_age_sex_model(
                 agesex_model_name=agesex_model_name,
                 device=device,
@@ -717,7 +717,7 @@ def process_conversation(
             "predictor": predict_demographics_segments,
             "columns": ["age", "sex"],
         },
-        "Emotion Category": {
+        "emotion_cat": {
             "loader": lambda: load_SER_model(
                 SER_model_name=SER_model_name,
                 device=device,
@@ -726,7 +726,7 @@ def process_conversation(
             "predictor": predict_emotion_segments,
             "columns": ["emoCat"],
         },
-        "Emotion Dimensions": {
+        "emotion_dim": {
             "loader": lambda: load_emo_dim_model(
                 emo_dim_model_name=emo_dim_model_name,
                 device=device,
@@ -761,17 +761,18 @@ def process_conversation(
                 "seg_filename": row["seg_filename"],
             }
 
-            if "Age/Sex" in prediction_maps:
-                pred = prediction_maps["Age/Sex"].get(idx, {})
+            if "age_sex" in prediction_maps:
+                pred = prediction_maps["age_sex"].get(idx, {})
                 result["age"] = pred.get("age")
                 result["sex"] = pred.get("sex")
 
-            if "Emotion Category" in prediction_maps:
-                pred = prediction_maps["Emotion Category"].get(idx, {})
-                result["emoCat"] = pred.get("EmoCat")
+            if "emotion_cat" in prediction_maps:
+                pred = prediction_maps["emotion_cat"].get(idx, {})
+                print(pred, prediction_maps)
+                result["emoCat"] = pred.get("emoCat")
 
-            if "Emotion Dimensions" in prediction_maps:
-                pred = prediction_maps["Emotion Dimensions"].get(idx, {})
+            if "emotion_dim" in prediction_maps:
+                pred = prediction_maps["emotion_dim"].get(idx, {})
                 result["arousal"] = pred.get("arousal")
                 result["valence"] = pred.get("valence")
                 result["dominance"] = pred.get("dominance")

@@ -55,7 +55,6 @@ def predict_emotion_dim_segments(
     output_dir: str,
     cache: bool = True,
     batch_size: Optional[float] = 30.0,
-    min_duration_samples: int = 1600,
 ) -> Dict[str, Any]:
     """
     Slices segments into dynamic batches, verifies disk-cached files, 

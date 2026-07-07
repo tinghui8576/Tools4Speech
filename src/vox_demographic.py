@@ -58,7 +58,6 @@ def predict_demographics_segments(
     output_dir: str,
     cache: bool = True,
     batch_size: Optional[float] = 30.0,
-    min_duration_samples: int = 1600,
 ) -> Dict[str, Any]:
     """
     Slices segments into dynamic batches, verifies disk-cached files, 
@@ -113,7 +112,7 @@ def predict_demographics_segments(
                     # Construct cache file path smoothly
                     cache_path = batch[batch_idx].get("demo_cache", batch[batch_idx]['seg_filename'].replace(".wav", "_demographics.txt"))
                     with open(cache_path, "w", encoding="utf-8") as cache_file:
-                        cache_file.write(f"Age: {current_age:.1f} | Sex: {current_sex}")
+                        cache_file.write(f"age: {current_age:.1f} | sex: {current_sex}")
 
         # Save results back using their true global identifiers
         for seg, res in zip(batch, batch_results):

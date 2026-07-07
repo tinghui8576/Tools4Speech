@@ -101,14 +101,14 @@ def predict_emotion_segments(
                 current_emo = EMOTION_LABELS[pred_idx]
 
                 batch_results[batch_idx] = {
-                    "EmoCat": current_emo
+                    "emoCat": current_emo
                 }
 
                 if cache:
                     # Construct cache file path smoothly
                     cache_path = batch[batch_idx].get("emo_cache", batch[batch_idx]['seg_filename'].replace(".wav", "_emotion.txt"))
                     with open(cache_path, "w", encoding="utf-8") as cache_file:
-                        cache_file.write(f"EmoCat: {current_emo}")
+                        cache_file.write(f"emoCat: {current_emo}")
 
         # Save results back using their true global identifiers
         for seg, res in zip(batch, batch_results):
