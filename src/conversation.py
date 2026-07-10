@@ -10,6 +10,7 @@ https://github.com/hanlululu/Conversational_speech_labeling_pipeline
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import pandas as pd
 from tqdm.auto import tqdm
@@ -224,6 +225,225 @@ def _export_to_elan_format(df: pd.DataFrame, output_path: str) -> None:
     print(f"  Created {len(output_data)} annotations across {len(tier_names)} tiers")
     print(f"  Tiers: {tier_names}")
 
+def _export_to_labelstudio_format(
+    df: pd.DataFrame,
+    speakers_audio: dict,
+    export_dir: str
+):
+
+    os.makedirs(export_dir, exist_ok=True)
+
+    audio_dir = os.path.join(export_dir, "audio")
+    os.makedirs(audio_dir, exist_ok=True)
+
+    tasks = []
+
+
+    for speaker, audio_path in speakers_audio.items():
+
+        filename = os.path.basename(audio_path)
+
+        # copy audio
+        shutil.copy2(
+            audio_path,
+            os.path.join(audio_dir, filename)
+        )
+
+
+        speaker_df = df[
+            df["speaker"] == speaker
+        ].reset_index(drop=True)
+
+
+        results = []
+
+
+        for idx, row in speaker_df.iterrows():
+
+            region_id = f"{speaker}_segment_{idx}"
+
+            start = float(row["start_sec"])
+            end = float(row["end_sec"])
+
+
+            # -------------------------
+            # speaker region
+            # -------------------------
+
+            results.append(
+                {
+                    "id": region_id,
+                    "from_name": "speaker",
+                    "to_name": "audio",
+                    "type": "labels",
+                    "value": {
+                        "start": start,
+                        "end": end,
+                        "labels": [
+                            speaker
+                        ]
+                    }
+                }
+            )
+
+
+            # -------------------------
+            # transcript
+            # -------------------------
+
+            if "transcription" in row and pd.notna(row["transcription"]):
+
+                results.append(
+                    {
+                        "id": f"{region_id}",
+                        "from_name": "transcript",
+                        "to_name": "audio",
+                        "type": "textarea",
+                        "value": {
+                            "start": start,
+                            "end": end,
+                            "text": [
+                                str(row["transcription"])
+                            ]
+                        }
+                    }
+                )
+
+
+            # -------------------------
+            # emotion category
+            # -------------------------
+
+            if "emoCat" in row and pd.notna(row["emoCat"]):
+
+                results.append(
+                    {
+                        "id": f"{region_id}",
+                        "from_name": "emoCat",
+                        "to_name": "audio",
+                        "type": "choices",
+                        "value": {
+                            "start": start,
+                            "end": end,
+                            "choices": [
+                                str(row["emoCat"])
+                            ]
+                        }
+                    }
+                )
+
+
+            # -------------------------
+            # sex
+            # -------------------------
+
+            if "sex" in row and pd.notna(row["sex"]):
+
+                results.append(
+                    {
+                        "id": f"{region_id}",
+                        "from_name": "sex",
+                        "to_name": "audio",
+                        "type": "choices",
+                        "value": {
+                            "start": start,
+                            "end": end,
+                            "choices": [
+                                str(row["sex"])
+                            ]
+                        }
+                    }
+                )
+
+
+            # -------------------------
+            # age
+            # -------------------------
+
+            if "age" in row and pd.notna(row["age"]):
+
+                results.append(
+                    {
+                        "id": f"{region_id}",
+                        "from_name": "age",
+                        "to_name": "audio",
+                        "type": "number",
+                        "value": {
+                            "number": float(row["age"])
+                        }
+                    }
+                )
+
+
+            # -------------------------
+            # emotion dimensions
+            # -------------------------
+
+            for name in [
+                "arousal",
+                "valence",
+                "dominance"
+            ]:
+
+                if name in row and pd.notna(row[name]):
+
+                    results.append(
+                        {
+                            "id": f"{region_id}",
+                            "from_name": name,
+                            "to_name": "audio",
+                            "type": "number",
+                            "value": {
+                                "number": float(row[name])
+                            }
+                        }
+                    )
+
+
+
+        # one task per audio file
+
+        tasks.append(
+            {
+                "data": {
+                    "audio":
+                    f"/data/local-files/?d=audio/{filename}"
+                },
+
+                "annotations": [
+                    {
+                        "model_version": "Tools4Speech",
+                        "result": results
+                    }
+                ]
+            }
+        )
+    data_dir = os.path.join(export_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    output_file = os.path.join(
+                data_dir,
+                "labelstudio_tasks.json"
+            )
+
+
+    with open(
+        output_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            tasks,
+            f,
+            indent=2,
+            ensure_ascii=False
+        )
+
+
+    print(
+        f"✓ Label Studio export created: {output_file}"
+    )
 
 def process_conversation(
     speakers_audio: Mapping[str, str] | str,
@@ -262,6 +482,7 @@ def process_conversation(
     cleanup_preprocessed: bool = True,
     min_duration_samples: float = 1600,
     export_elan: bool = True,
+    export_labelstudio: bool = True,
     preprocess_audio_enabled: bool = False,
     preprocess_config: Optional[PreprocessConfig] = None,
     preprocess_config_mild: Optional[PreprocessConfig] = None,
@@ -780,10 +1001,29 @@ def process_conversation(
             final_results.append(result)
 
     df_all = pd.DataFrame(final_results)
+    print(df_all, df_merged_context)
     # df_all = df_all.merge(df_merged_context, on=["speaker", "start_sec", "end_sec"], how="left")
     print(raw_agesex_path)
     df_all.to_csv(raw_agesex_path, sep="\t", index=False)
 
+    # Export to Label Studio format if requested
+    if export_labelstudio:
+        labelstudio_export_path = None
+        labelstudio_df = df_merged_context.merge(
+            df_all,
+            on=["speaker", "seg_filename"],
+            how="left"
+        )
+        
+        labelstudio_export_path = os.path.join(output_dir, "labelstudio_export")
+        
+        # labelstudio_audio = speakers_audio
+        _export_to_labelstudio_format(
+            df=labelstudio_df,
+            speakers_audio=speakers_audio,
+            export_dir= labelstudio_export_path
+        )
+        print(f"✓ Label Studio export: {labelstudio_export_path}")
 
     # Export to ELAN format if requested
     elan_export_path = None
@@ -806,7 +1046,8 @@ def process_conversation(
     print(f"- Final labels: {final_labels_path}")
     if elan_export_path:
         print(f"- ELAN export: {elan_export_path}")
-
+    if labelstudio_export_path:
+        print(f"- Label Studio export: {labelstudio_export_path}")
     # Stage-wise evaluation (optional)
     eval_results = None
     eval_plot_paths: Dict[str, str] | None = None
@@ -877,6 +1118,7 @@ def process_conversation(
         "classified": classified_path,
         "final_labels": final_labels_path,
         "metadata_labels": raw_agesex_path,
+        "labelstudio_export": labelstudio_export_path,
         "elan_export": elan_export_path,
         "turns_df": turns_df,
         "classified_df": df_class,

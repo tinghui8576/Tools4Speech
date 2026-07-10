@@ -58,7 +58,8 @@ def init_state():
         "error": None,
         "_thread": None,
         "_shared": None,
-        "tmp_audio": None
+        "tmp_audio": None,
+        "ls_url": None
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -77,6 +78,7 @@ def reset_state() -> None:
         "_thread": None,
         "_shared": None,
         "tmp_audio": None,
+        "ls_url": None,
     }.items():
         st.session_state[key] = default
     st.session_state["project"] = PROJECT_DEFAULT.copy()

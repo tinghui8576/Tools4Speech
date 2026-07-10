@@ -1170,7 +1170,7 @@ def run_pipeline() -> None:
                 "Metadata source",
                 [   
                     "Skip Metadata",
-                    "Run Voxprofile for Metadata Generation",
+                    "Generating for Metadata",
                     "Use Existing Metadata",
 
                 ],
@@ -1548,7 +1548,10 @@ def run_pipeline() -> None:
             "Uncheck to keep them (e.g., for inspection/debugging).",
         )
         export_elan = c6.checkbox("Export ELAN-compatible labels", value=True)
+        c7, c8, c9 = st.columns(3)
+        export_labelstudio = c7.checkbox("Export labelstudio labels", value=True)
 
+   
     # =========================================================================
     # RUN BUTTON
     # =========================================================================
@@ -1558,8 +1561,10 @@ def run_pipeline() -> None:
     _audio_ready = speakers_audio is not None
     _continue_ready = _continue_mode and (existing_path is not None) and _audio_ready
     _full_ready = (not _continue_mode) and _audio_ready
-    run_disabled = st.session_state.running or not (_continue_ready or _full_ready)
+    run_disabled = st.session_state.running or not (_continue_ready or _full_ready) 
+    # print(run_disabled)
 
+    
     col_run, col_reset = st.columns([1, 1])
 
     with col_run:
@@ -1585,6 +1590,7 @@ def run_pipeline() -> None:
                     cleanup_speaker_folders=cleanup_speaker_folders,
                     min_duration_samples=float(min_duration_samples),
                     export_elan=export_elan,
+                    export_labelstudio=export_labelstudio,
                     evaluate_ref_path=evaluate_ref_path,
                     evaluate_stages=evaluate_stages,
                     evaluate_collar=evaluate_collar,
@@ -1628,6 +1634,7 @@ def run_pipeline() -> None:
                     cleanup_preprocessed=cleanup_preprocessed,
                     min_duration_samples=float(min_duration_samples),
                     export_elan=export_elan,
+                    export_labelstudio=export_labelstudio,
                     preprocess_audio_enabled=preprocess_audio_enabled,
                     preprocess_config=preprocess_config,
                     preprocess_config_mild=preprocess_config_mild,
@@ -1687,6 +1694,7 @@ def run_pipeline() -> None:
         st.session_state.running = False
         st.session_state.done = True
         st.session_state.result = shared["result"]
+        
         st.session_state.error = shared["error"]
         st.rerun()
 
@@ -1726,6 +1734,7 @@ def run_pipeline() -> None:
                 _add("final_labels.txt", result.get("final_labels"))
                 _add("elan_export", result.get("elan_export"))
                 _add("merged_turns.txt", result.get("merged_turns"))
+                # _add("")
                 _add("raw_transcriptions.txt", result.get("raw_transcriptions"))
                 _add("classified.txt", result.get("classified"))
                 _add("combined_vad.txt", result.get("combined_vad"))
